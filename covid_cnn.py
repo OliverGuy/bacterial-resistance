@@ -243,19 +243,19 @@ def main():
             "y_pred": y_train_pred_labels.reshape(-1)
         })
         #for i, c in enumerate(x_column_names) : df_train[c] = X_train[:,0,i,0].reshape(-1)
-        df_train.to_csv(os.path.join(output_folder, "fold-%d-training.csv" % fold), index=False)
+        df_train.to_csv(os.path.join(output_folder, f"fold-{fold}-training.csv"), index=False)
 
         df_val = pd.DataFrame({
             "y_true": y_val_labels.reshape(-1),
             "y_pred": y_val_pred_labels.reshape(-1)
         })
-        df_val.to_csv(os.path.join(output_folder, "fold-%d-validation.csv" % fold), index=False)
+        df_val.to_csv(os.path.join(output_folder, f"fold-{fold}-validation.csv"), index=False)
 
         df_test = pd.DataFrame({
             "y_true": y_test_labels.reshape(-1),
             "y_pred": y_test_pred_labels.reshape(-1)
         })
-        df_test.to_csv(os.path.join(output_folder, "fold-%d-test.csv" % fold), index=False)
+        df_test.to_csv(os.path.join(output_folder, f"fold-{fold}-test.csv"), index=False)
 
     return
 
