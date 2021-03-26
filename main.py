@@ -133,6 +133,7 @@ def main():
     optimizer = Adam(learning_rate=1e-5)
 
     # the loss is binary crossentropy, as this is a mutli-label classification problem (i.e. classes are not disjoint)
+    # TODO account for unknown classes
     network.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
 
     print("Network has been successfully compiled.")
@@ -157,6 +158,7 @@ def main():
     network.save_weights(os.path.join(output_folder, "initial-random-weights.h5"))
 
     #  cross-validation
+    # TODO adapt stratification to multi-label classification
     from sklearn.model_selection import StratifiedShuffleSplit
     stratified_shuffle_split = StratifiedShuffleSplit(n_splits=n_folds,
                                                       test_size=0.1,
