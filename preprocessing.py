@@ -46,13 +46,6 @@ def load_asts(folder="../SA-ast"):
         
         df.columns[0] = "ena project"
 
-        # remove NaN-only lines and columns
-        df.dropna(axis="index", subset=df.columns[1:], how="all", inplace=True)
-        df.dropna(axis="columns", how="all", inplace=True)
-        # capitalize column and index names
-        df.rename(str.casefold, axis="columns", inplace=True)
-        df.index.rename(df.index.name.casefold(), inplace=True)
-
         feature_cleaning(df)
 
         asts.append(df)
@@ -60,18 +53,19 @@ def load_asts(folder="../SA-ast"):
         basename = os.path.basename(filename)
         for idx in df.index:
             origin[idx]=basename
-    return pd.concat(asts), origin  # TODO there are duplicates
+    return pd.concat(asts), origin  # TODO there are duplicate indices
 
 def test_features(asts):
     
-    feature_counts = asts.isna().sum()
-    n_features = asts.shape[0]
+    na_counts = asts.isna().sum()
+    n_lines = asts.shape[0]
+    print(na_counts/n_lines)
 
 if __name__ == "__main__":
     asts, origin = load_asts()
     test_features(asts)
     exit()
     # test_repeating_projects()
-    # test_repeating_bacteria() (runs)
+    # test_repeating_bacteria() (runs/indices)
     # test_bacteria_contigs_v_ast()
     # test_label_count()
