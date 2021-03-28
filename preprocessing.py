@@ -43,8 +43,6 @@ def load_asts(folder="../SA-ast"):
         # skip NaN-only tables
         if df.iloc.drop(columns=0).isna().all(axis=None):
             continue
-        
-        df.columns[0] = "ena project"
 
         feature_cleaning(df)
 
