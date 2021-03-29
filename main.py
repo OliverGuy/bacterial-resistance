@@ -124,7 +124,7 @@ def main():
     # (Output) Softmax
     network.add(Dense(
         number_of_classes,
-        activation='sigmoid',
+        activation='softmax',
         use_bias=True,
         bias_initializer=keras.initializers.Constant(bias_vector_init_value)))  # there are five classes in the problem
 
@@ -132,9 +132,9 @@ def main():
     from keras.optimizers import Adam
     optimizer = Adam(learning_rate=1e-5)
 
-    # the loss is binary crossentropy, as this is a mutli-label classification problem (i.e. classes are not disjoint)
-    # TODO account for unknown classes
-    network.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+    # the loss is categorical crossentropy, as this is a classification problem
+    # TODO use binary crossentropy for multi-label classification and account for unknown classes
+    network.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
     print("Network has been successfully compiled.")
     network.summary()
