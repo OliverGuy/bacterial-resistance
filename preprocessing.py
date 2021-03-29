@@ -134,6 +134,10 @@ def test_features(asts):
     })
     return df
 
+def load_main_contig(contig_folder):
+    #TODO load main contig fiven its folder path
+
+
 def main():
     asts = load_asts()
     asts = filter_contigs(asts)
@@ -143,6 +147,7 @@ def main():
     out_filename = "../out/ast.csv"
     print(f"Exporting to {out_filename}...")
     asts.to_csv(out_filename)
+
 
 if __name__ == "__main__":
     main()
