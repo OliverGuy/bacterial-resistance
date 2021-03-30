@@ -28,7 +28,7 @@ def feature_cleaning(df):
 
 
 def load_asts(folder="../SA-ast"):
-    """Loads anti-biotic sensitivity files into a DataFrame. 
+    """Loads anti-biotic sensitivity files into a DataFrame.
 
     Looks for `"*_AST.txt"` files in `folder`. Due to inconsistent feature names,
     features are assumed to be ordered as such:
@@ -73,32 +73,30 @@ def load_asts(folder="../SA-ast"):
     return pd.concat(asts, verify_integrity=True)
 
 
-def filter_contigs(asts, folder="../SA-contigs", dropna=True):
-    """Returns the DataFrame filtered on the condition that the contig files pointed to 
-    run accession is contained in folder.
+def find_contigs(asts, folder="../SA-contigs", filter=True, dropna=True):
+    """Inserts a "contig_path" column to the input DataFrame, with filtering logic.
 
     Parameters
     ----------
     asts : DataFrame
-        The table to filter.
+        The table to modify
     folder : str, optional
         The folder to look for the contigs in, by default "../SA-contigs"
+    filter : boolean, optional
+        Whether to remove rows whose contig files cannot be found, True by default
     dropna : boolean, optional
-        Whether to drop columns that become NaN due to filtering, True by default
-
-    Returns
-    -------
-    DataFrame
-        The filtered table.
+        Whether to drop columns that become NaN after filtering, True by default
     """
     regex = os.path.join(folder, "**", "*_contigs.fasta")
-    contig_list = glob(regex, recursive=True)
-    contig_list = [os.path.basename(path)[:-14] for path in contig_list]
-    exists = asts.index.isin(contig_list)
-    filtered = asts.iloc[exists, :]
-    if dropna:
-        return filtered.dropna(axis="columns", how="all")
-    return filtered
+    contig_paths = glob(regex, recursive=True)
+    contig_runs = [os.path.basename(path)[:-14] for path in contig_paths]
+    paths = pd.Series(contig_paths, index=contig_runs)
+    paths.reindex(asts.index)
+    asts.insert(value=paths, loc=1, column="contig_path")
+    if filter:
+        asts.dropna(axis="index", subset=["contig_path"], how='any', inplace=True)
+        if dropna:
+            asts.dropna(axis="columns", how="all", inplace=True)
 
 
 def find_contig_path(folder, run_accession):
@@ -130,22 +128,19 @@ def test_features(asts):
     n_lines = asts.shape[0]
     df = pd.DataFrame({
         "na counts": na_counts,
-        "na ratios": na_counts/n_lines
+        "na ratios": na_counts / n_lines
     })
     return df
-
-def load_main_contig(contig_folder):
-    #TODO load main contig fiven its folder path
 
 
 def main():
     asts = load_asts()
-    asts = filter_contigs(asts)
+    find_contigs(asts)
     print("Feature summary:")
     print(test_features(asts))
     os.makedirs("../out", exist_ok=True)
     out_filename = "../out/ast.csv"
-    print(f"Exporting to {out_filename}...")
+    print(f"Exporting to {out_filename}")
     asts.to_csv(out_filename)
 
 
