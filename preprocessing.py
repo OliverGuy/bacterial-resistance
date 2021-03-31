@@ -4,6 +4,18 @@ from glob import glob
 import os
 import numpy as np
 
+# tests that induce resistance on each other
+equivalent_features = {
+    'ena projects': 'ena project',
+    'methicillin/oxacillin': 'methicilin',
+    'oxacillin': 'methicilin',
+    'clindamycin': 'constitutive clindamycin',
+    'rifampin': 'rifampicin'
+}
+
+# intermediate responses that represent a small subset of samples
+discarded_responses = ['B', 'I', 'G']
+
 
 def feature_cleaning(df):
     """Cleans feature names in-place.
@@ -13,18 +25,37 @@ def feature_cleaning(df):
     df : DataFrame
         DataFrame to clean.
     """
-    # remove NaN-only lines and columns
-    df.dropna(axis="index", subset=df.columns[1:], how="all", inplace=True)
-    df.dropna(axis="columns", how="all", inplace=True)
-
     # casefold column names
     df.rename(str.casefold, axis="columns", inplace=True)
 
-    # rename index and project names
+    # rename index name
     df.index = df.index.rename("run accession")
-    df.rename(columns={"ena projects": "ena project"}, inplace=True)
+    # make features consistent
+    df.rename(columns=equivalent_features, inplace=True)
 
-    # TODO some tests/molecules have multiple names
+    # remove the Oxford identifier
+    df.drop(columns="oxford comid", axis="columns", errors='ignore', inplace=True)
+
+
+def result_cleaning(df):
+    """Cleans test results in-place.
+
+    Parameters
+    ----------
+    df : DataFrame
+        DataFrame to clean.
+    """
+    # remove NaN-only columns
+    # NB: we need to do it before replacing otherwise Series.str.replace errors out
+    df.dropna(axis="columns", how="all", inplace=True)
+
+    for col in df.columns.drop("ena project"):
+        df.loc[:, col] = df.loc[:, col].str.replace(" ", "", regex=False)
+
+    df.replace("", np.NaN, inplace=True)
+    # remove NaN-only lines and columns
+    df.dropna(axis="index", subset=df.columns.drop("ena project"), how="all", inplace=True)
+    df.dropna(axis="columns", how="all", inplace=True)
 
 
 def load_asts(folder="../SA-ast"):
@@ -55,6 +86,7 @@ def load_asts(folder="../SA-ast"):
                          sep="\t",
                          header=0,
                          usecols=cols,
+                         na_values=['NT', 0, '-'] + discarded_responses,
                          skip_blank_lines=True,
                          index_col=1)  # use run accession as index
 
@@ -63,6 +95,8 @@ def load_asts(folder="../SA-ast"):
             continue
 
         feature_cleaning(df)
+
+        result_cleaning(df)
 
         # add filename to DataFrame
         basename = os.path.basename(filename)
@@ -121,6 +155,13 @@ def find_contig_path(folder, run_accession):
         return np.NaN
     else:
         return contig_folder[0]
+
+
+def unique_test_results(asts):
+    df = asts.drop("ena project", axis=1, errors='ignore')
+    df = df.drop("ast_filename", axis=1, errors='ignore')
+    df = df.drop("contig_path", axis=1, errors='ignore')
+    return np.unique(df.values.flatten().astype("str"))
 
 
 def test_features(asts):
