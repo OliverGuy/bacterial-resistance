@@ -1,3 +1,7 @@
+"""
+Basic preprocessing pipeline for the AST dataset.
+"""
+
 import pandas as pd
 from Bio import SeqIO
 from glob import glob
@@ -175,6 +179,10 @@ def test_features(asts):
 
 
 def main():
+    """
+    Expects files to be located in "../SA-ast" and "../SA-contigs" respectively.
+    Outputs to "../out".
+    """
     asts = load_asts()
     find_contigs(asts)
     print("Feature summary:")
