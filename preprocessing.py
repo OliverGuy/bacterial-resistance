@@ -181,6 +181,7 @@ def test_features(asts):
 def main():
     """
     Expects files to be located in "../SA-ast" and "../SA-contigs" respectively.
+    Currently requires AST files (but not contigs) to be at the root of "SA-contigs".
     Outputs to "../out".
     """
     asts = load_asts()
