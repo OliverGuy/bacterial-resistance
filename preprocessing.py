@@ -2,11 +2,11 @@
 Basic preprocessing pipeline for the AST dataset.
 """
 
+import os
+from glob import glob
+import numpy as np
 import pandas as pd
 from Bio import SeqIO
-from glob import glob
-import os
-import numpy as np
 
 # tests that induce resistance on each other
 equivalent_features = {
@@ -63,7 +63,7 @@ def result_cleaning(df):
 
 
 def load_asts(folder="../SA-ast"):
-    """Loads anti-biotic sensitivity files into a DataFrame.
+    """Loads anti-biotic sensitivity files into a DataFrame with some preprocessing.
 
     Looks for `"*_AST.txt"` files in `folder`. Due to inconsistent feature names,
     features are assumed to be ordered as such:
@@ -113,6 +113,7 @@ def load_asts(folder="../SA-ast"):
 
 def find_contigs(asts, folder="../SA-contigs", filter=True, dropna=True):
     """Inserts a "contig_path" column to the input DataFrame, with filtering logic.
+    New: paths are now relative to the specified folder, not your current working directory.
 
     Parameters
     ----------
@@ -127,6 +128,7 @@ def find_contigs(asts, folder="../SA-contigs", filter=True, dropna=True):
     """
     regex = os.path.join(folder, "**", "*_contigs.fasta")
     contig_paths = glob(regex, recursive=True)
+    contig_paths = [os.path.relpath(path, folder) for path in contig_paths]
     contig_runs = [os.path.basename(path)[:-14] for path in contig_paths]
     paths = pd.Series(contig_paths, index=contig_runs)
     paths.reindex(asts.index)
@@ -182,14 +184,13 @@ def main():
     """
     Expects files to be located in "../SA-ast" and "../SA-contigs" respectively.
     Currently requires AST files (but not contigs) to be at the root of "SA-contigs".
-    Outputs to "../out".
+    Outputs the preprocessed `ast.csv` to the contigs folder.
     """
     asts = load_asts()
     find_contigs(asts)
     print("Feature summary:")
     print(test_features(asts))
-    os.makedirs("../out", exist_ok=True)
-    out_filename = "../out/ast.csv"
+    out_filename = "../SA-contigs/ast.csv"
     print(f"Exporting to {out_filename}")
     asts.to_csv(out_filename)
 
