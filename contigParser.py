@@ -10,7 +10,7 @@ fullpath : path-like
 """
 import re
 
-from Bio import SeqIO
+from Bio.SeqIO.FastaIO import SimpleFastaParser
 
 from itertools import islice
 
@@ -43,27 +43,27 @@ class ContigMaxParser:
         """
         if id not in self.max_entries:
             self.max_entries[id] = self.__compute_longest_contig(fullpath)
-        generator = SeqIO.parse(fullpath, "fasta")
-        seq = next(islice(generator, self.max_entries[id], None))
+        with open(fullpath) as handle:
+            generator = SimpleFastaParser(handle)
+            _, seq = next(islice(generator, self.max_entries[id], None))
         res = [nucleotides[nucl] for nucl in seq]
         return res
 
     def __compute_longest_contig(self, fullpath):
         max_len = 0
         seq_key = None
-        records = SeqIO.parse(fullpath, "fasta")
 
-        # iterating the index returns sequence ids as strings
-        for id, record in enumerate(records):
-            # try to infer the sequence length from the name
-            m = self.regex.match(record.id)
-            if m:
-                l = int(m.group(1))
-            else:
-                l = len(record)
-            if l > max_len:
-                max_len = l
-                seq_key = id
+        with open(fullpath) as handle:
+            for idx, (name, sequence) in enumerate(SimpleFastaParser(handle)):
+                # try to infer the sequence length from the name
+                m = self.regex.match(name)
+                if m:
+                    l = int(m.group(1))
+                else:
+                    l = len(sequence)
+                if l > max_len:
+                    max_len = l
+                    seq_key = idx
         assert seq_key is not None
         return seq_key
 
