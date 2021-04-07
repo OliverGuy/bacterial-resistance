@@ -49,7 +49,7 @@ class ContigDataGenerator(keras.utils.Sequence):
         self.batch_size = batch_size
         self.n_classes = n_classes
         self.shuffle = shuffle
-        self.parser = parsers[parser]
+        self.parser = parsers[parser]()
         self.on_epoch_end()
 
     def __len__(self):
@@ -87,6 +87,6 @@ class ContigDataGenerator(keras.utils.Sequence):
             y[i] = self.labels[id]
 
         # 'post' padding allows models to use fast CuDNN layer implementations
-        X = keras.preprocessing.pad_sequences(sequences, maxlen=self.dim, padding='post')
-        # TODO masking ?
+        X = keras.preprocessing.sequence.pad_sequences(sequences, maxlen=self.dim, padding='post', truncating='post')
+        # TODO sample_weights ?
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)

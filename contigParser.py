@@ -20,6 +20,9 @@ class ContigMaxParser:
         self.regex = re.compile(".*_length_(\d*)_.*")
         self.max_entries = {}
 
+    def __call__(self, *args):
+        return self.parse(*args)
+
     def parse(self, id, fullpath):
         """Parses a contig into a list.
 
