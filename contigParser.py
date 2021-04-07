@@ -12,6 +12,8 @@ import re
 
 from Bio import SeqIO
 
+from itertools import islice
+
 nucleotides = {'N': 0, 'A': 1, 'C': 2, 'G': 3, 'T': 4}
 
 
@@ -41,23 +43,24 @@ class ContigMaxParser:
         """
         if id not in self.max_entries:
             self.max_entries[id] = self.__compute_longest_contig(fullpath)
-        seq_key = self.max_entries[id]
-        idx = SeqIO.index(fullpath, "fasta")
-        return [nucleotides[nucl] for nucl in idx[seq_key]]
+        generator = SeqIO.parse(fullpath, "fasta")
+        seq = next(islice(generator, self.max_entries[id], None))
+        res = [nucleotides[nucl] for nucl in seq]
+        return res
 
     def __compute_longest_contig(self, fullpath):
         max_len = 0
         seq_key = None
-        idx = SeqIO.index(fullpath, "fasta")
+        records = SeqIO.parse(fullpath, "fasta")
 
         # iterating the index returns sequence ids as strings
-        for id in idx:
+        for id, record in enumerate(records):
             # try to infer the sequence length from the name
-            m = self.regex.match(id)
+            m = self.regex.match(record.id)
             if m:
                 l = int(m.group(1))
             else:
-                l = len(idx[id])
+                l = len(record)
             if l > max_len:
                 max_len = l
                 seq_key = id
