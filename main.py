@@ -7,26 +7,33 @@ import pandas as pd
 import sys
 
 # imports for Keras
-import keras
-from keras.models import Sequential
-from keras.layers import Dense, Conv1D, Dropout, Flatten, MaxPooling1D
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Input, Dense, Conv1D, Dropout, Flatten, MaxPooling1D, Embedding
 
-# import for scikit-learn
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import StandardScaler
+from preprocessing import classes
+from contigParser import nucleotides
+
+from contigDataset import ContigDataGenerator
 
 
 def main():
 
     # a few hard-coded values
-    sequence_length = 31029  # length of a DNA/RNA sequence for the virus
+    sequence_length = 1299315  # length of a DNA/RNA sequence for the bacteria, None=inferred
+    voc_size = len(nucleotides)  # 5:ACGTN
     batch_size = 50
     epochs = 1000  # 500
     n_folds = 10
     # this is used to stop and restart the testing on a sequence of folds (only works with a fixed random state)
     starting_fold = 0
     random_state = 42  # TODO change to None for pseudo-random number generation initialized with time
-    output_folder = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-keras-cnn-output"
+    contig_folder = "../SA-contigs"
+    output_root = "../out"
+    output_folder = os.path.join(
+        output_root,
+        datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-keras-cnn-output"
+    )
 
     # create folder
     if not os.path.exists(output_folder):
@@ -35,30 +42,41 @@ def main():
     # data pre-processing
     # prepare data in the correct format
     print("Reading data...")
-    X_original = pd.read_csv("../NCBI_1503/data.csv", header=None).values
-    y_original = pd.read_csv("../NCBI_1503/labels.csv", header=None).values
-    number_of_classes = len(np.unique(y_original))
-    print("X_original has shape:", X_original.shape)
-    print((
-        f"y_original has shape: {y_original.shape}, "
-        f"with {len(np.unique(y_original))} unique classes, {np.unique(y_original)}"
-    ))
+    ast_data = pd.read_csv(os.path.join(contig_folder, "ast.csv"), header=0, index_col=0)
 
-    # let's NOT normalize: each feature of the data only has 5 values
-    #scaler_x = StandardScaler()
-    #X_original = scaler_x.fit_transform(X_original)
+    antibiotic = "gentamicin"
 
-    # reshape input tensor to three dimensions
-    X = np.reshape(X_original, (X_original.shape[0], X_original.shape[1], 1))
-    print("X, reshaped, has shape:", X.shape)
+    # keep only data relative to the chosen antibiotic
+    ast_data = ast_data.loc[:, ["contig_path", antibiotic]]
+    ast_data.dropna(axis="index", inplace=True)
 
-    # also reshape labels to one-hot encoding
-    one_hot_encoder = OneHotEncoder()
-    y = one_hot_encoder.fit_transform(y_original)
-    print("y, reshaped to one-hot encoding, has shape:", y.shape)
+    X = ast_data["contig_path"].to_numpy()
+
+    # integer-encode classes
+    y = ast_data[antibiotic].replace(classes).to_numpy()
+
+    number_of_classes = len(np.unique(y))  # 2
+    print(f"Considering response to {antibiotic}")
+    print(f"Number of samples: {ast_data.shape[0]}, {voc_size} nucleotides")
+    print(f"{number_of_classes} unique classes: {np.unique(y)}")
+
+    # dataset generator parameters
+    generator_params = {
+        "folder": contig_folder,
+        "n_classes": number_of_classes,
+        "parser": "max",
+        "batch_size": batch_size,
+        "shuffle": True,
+        "random_state": random_state
+    }
+    # length of output contigs must be consistent for the dense layer
+    if not sequence_length:
+        sequence_length = ContigDataGenerator(X, y, **generator_params).compute_sequence_length()
+    generator_params["sequence_length"] = sequence_length
+    print(f"sequence length: {sequence_length}")
 
     # shapes of the tensors in the network
-    # (?, 31029, 1)
+    # (?, 1299315, 1)
     # (?, 210, 130)
     # (?, 1, 204)
     # (?, 1, 150)
@@ -68,6 +86,10 @@ def main():
     # python3 gen3.py 500 130 204 150 196 148 236 81 9 106 121 0 0 0
 
     # default values for the network
+    embed_dim = 1
+    # in order NACGT, see nucleotides:
+    embed_init_w = np.array([0, 1, 0.25, 0.75, 0.5]).reshape((-1, 1))
+
     units_1 = 12  # 130
     units_2 = 204
     units_3 = 150
@@ -91,18 +113,33 @@ def main():
     print("Creating network...")
     network = Sequential()
 
+    network.add(Input(
+        shape=(sequence_length,)
+    ))
+    print(network.input_shape)
+    # embeds integral indices into dense arrays
+    # TODO also try with a one-hot encoding
+    embed_layer = Embedding(voc_size, embed_dim)
+    network.add(embed_layer)
+    network.get_layer("embedding").set_weights([embed_init_w])
+    # freeze the model to keep embeddings constant:
+    # network.get_layer("embedding").trainable = False
+    print(network.output_shape)
+
+
     # using conv1D instead of resizing the data to make it fit conv2D
     # 1 Layer
     network.add(Conv1D(
         units_1,
-        input_shape=(sequence_length, 1),  # used to be (1, sequence_length, 1)
         activation='relu',
         kernel_size=conv_window_length_1,
         padding='same',
         use_bias=True,
-        bias_initializer=keras.initializers.Constant(bias_vector_init_value),
-        kernel_regularizer=keras.regularizers.l2(penalty_regularization_w_conv)))
+        bias_initializer=tf.keras.initializers.Constant(bias_vector_init_value),
+        kernel_regularizer=tf.keras.regularizers.l2(penalty_regularization_w_conv)))
+    print(network.output_shape)
     network.add(MaxPooling1D(pool_size=pool_size_1, padding='same'))
+    print(network.output_shape)
 
     # 2 Layer
     #network.add(Conv1D(units_2, activation='relu', kernel_size=conv_window_length_2, padding='same', use_bias=True, bias_initializer=keras.initializers.Constant(bias_vector_init_value), kernel_regularizer=keras.regularizers.l2(penalty_regularization_w_conv)))
@@ -114,19 +151,23 @@ def main():
 
     # Rectifier Layer, with dropout
     network.add(Flatten())  # convert tensor in N dimensions to tensor in 2
+    print(network.output_shape)
     network.add(Dense(
         units_4,
         activation='relu',
         use_bias=True,
-        bias_initializer=keras.initializers.Constant(bias_vector_init_value)))
+        bias_initializer=tf.keras.initializers.Constant(bias_vector_init_value)))
     network.add(Dropout(dropout_probability))
+    print(network.output_shape)
 
     # (Output) Softmax
     network.add(Dense(
         number_of_classes,
         activation='softmax',
         use_bias=True,
-        bias_initializer=keras.initializers.Constant(bias_vector_init_value)))  # there are five classes in the problem
+        bias_initializer=tf.keras.initializers.Constant(bias_vector_init_value)
+    ))
+    print(network.output_shape)
 
     # instantiate the optimizer, with its learning rate
     from keras.optimizers import Adam
@@ -134,14 +175,19 @@ def main():
 
     # the loss is categorical crossentropy, as this is a classification problem
     # TODO use binary crossentropy for multi-label classification and account for unknown classes
-    network.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+    network.compile(optimizer=optimizer,
+                    loss='categorical_crossentropy',
+                    metrics=['categorical_accuracy'])
 
     print("Network has been successfully compiled.")
     network.summary()
 
-    # XXX check if order in layer 1 is: conv+bias+relu+maxpool
+    # TODO check layer layout
     from tensorflow.keras.utils import plot_model
-    plot_model(network, show_shapes=True)
+    plot_model(
+        network,
+        to_file= os.path.join(output_folder, "model.png"),
+        show_shapes=True)
 
     # a 'callback' in Keras is a condition that is monitored during the training process
     # here we instantiate a callback for an early stop, that is used to avoid overfitting
@@ -164,9 +210,8 @@ def main():
                                                       test_size=0.1,
                                                       random_state=random_state)
 
-    for fold, (train_and_val_index, test_index) in enumerate(
-            stratified_shuffle_split.split(
-            X, y_original)):  # using y_original because this method needs numeric labels
+    # this method needs numeric labels fo y, but does not check data from X
+    for fold, (train_and_val_index, test_index) in enumerate(stratified_shuffle_split.split(X, y)):
 
         # skip folds until 'starting_fold', used to stop and restart evaluations
         if fold < starting_fold:
@@ -178,7 +223,7 @@ def main():
 
         # get test and validation set indexes, using a StratifiedShuffleSplit with just one split
         validation_shuffle_split = StratifiedShuffleSplit(n_splits=1, test_size=0.1, random_state=random_state)
-        train_index, val_index = next(validation_shuffle_split.split(X_train_and_val, y_original[train_and_val_index]))
+        train_index, val_index = next(validation_shuffle_split.split(X_train_and_val, y[train_and_val_index]))
 
         X_train, X_val = X_train_and_val[train_index], X_train_and_val[val_index]
         y_train, y_val = y_train_and_val[train_index], y_train_and_val[val_index]
@@ -187,37 +232,48 @@ def main():
 
         print(fold_report + ": starting the training process...")
 
+        training_generator = ContigDataGenerator(X_train, y_train, **generator_params)
+        validation_generator = ContigDataGenerator(X_val, y_val, **generator_params)
+        testing_generator = ContigDataGenerator(X_test, y_test, **generator_params)
         network.load_weights(os.path.join(output_folder, "initial-random-weights.h5"))  # reset network to initial state
-        network.fit(
-            X_train,
-            y_train,
-            batch_size=batch_size,
+
+        train_history = network.fit(
+            training_generator,
+            validation_data=validation_generator,
             epochs=epochs,
             verbose=1,
-            validation_data=(X_val, y_val),
-            shuffle=True)  # , callbacks=[early_stopping_callback])
+            workers=1,  # TODO edit for multiprocessing
+            use_multiprocessing=False
+        )  # , callbacks=[early_stopping_callback])
+        # see generator_params
+
+        test_history = network.evaluate(
+            testing_generator,
+            epochs=epochs,
+            verbose=1,
+            workers=1,  # TODO edit for multiprocessing
+            use_multiprocessing=False
+        )
 
         print("Training process finished. Testing...")
-        y_train_pred = network.predict(X_train)
-        y_val_pred = network.predict(X_val)
-        y_test_pred = network.predict(X_test)
+        # TODO generators, evaluate
+        # y_train_pred = network.predict(X_train).argmax(axis=1)
+        # y_val_pred = network.predict(X_val).argmax(axis=1)
+        # y_test_pred = network.predict(X_test).argmax(axis=1)
 
-        # in order to evaluate the network, we need to go back to a standard encoding
-        y_train_labels = one_hot_encoder.inverse_transform(y_train)
-        y_train_pred_labels = one_hot_encoder.inverse_transform(y_train_pred)
-        y_val_labels = one_hot_encoder.inverse_transform(y_val)
-        y_val_pred_labels = one_hot_encoder.inverse_transform(y_val_pred)
-        y_test_labels = one_hot_encoder.inverse_transform(y_test)
-        y_test_pred_labels = one_hot_encoder.inverse_transform(y_test_pred)
+        # TODO use keras.metrics.CategoricalAccuracy for one-hot labels instead
+        # from sklearn.metrics import accuracy_score
+        # train_accuracy = accuracy_score(y_train, y_train_pred)
+        # val_accuracy = accuracy_score(y_val, y_val_pred)
+        # test_accuracy = accuracy_score(y_test, y_test_pred)
 
-        from sklearn.metrics import accuracy_score
-        train_accuracy = accuracy_score(y_train_labels, y_train_pred_labels)
-        val_accuracy = accuracy_score(y_val_labels, y_val_pred_labels)
-        test_accuracy = accuracy_score(y_test_labels, y_test_pred_labels)
+        print(train_history.history.keys())
 
-        # XXX unused
-        # from sklearn.metrics import balanced_accuracy_score
-        # test_balanced_accuracy = balanced_accuracy_score(y_test_labels, y_test_pred_labels)
+        train_accuracy = train_history.history["categorical_accuracy"]
+        val_accuracy = train_history.history["val_categorical_accuracy"]
+        test_accuracy = test_history.history["categorical_accuracy"]
+
+        # TODO tensorboard ?
 
         accuracy_report = f"Accuracy on training: {train_accuracy:.4f}, validation: {val_accuracy:.4f}, test: {test_accuracy:.4f}"
 
@@ -240,24 +296,24 @@ def main():
         # save data of the fold
         #x_column_names = ["feature_%d" % f for f in range(0, sequence_length) ]
 
-        df_train = pd.DataFrame({
-            "y_true": y_train_labels.reshape(-1),
-            "y_pred": y_train_pred_labels.reshape(-1)
-        })
-        #for i, c in enumerate(x_column_names) : df_train[c] = X_train[:,0,i,0].reshape(-1)
-        df_train.to_csv(os.path.join(output_folder, f"fold-{fold}-training.csv"), index=False)
+        # df_train = pd.DataFrame({
+        #     "y_true": y_train_labels.reshape(-1),
+        #     "y_pred": y_train_pred_labels.reshape(-1)
+        # })
+        # #for i, c in enumerate(x_column_names) : df_train[c] = X_train[:,0,i,0].reshape(-1)
+        # df_train.to_csv(os.path.join(output_folder, f"fold-{fold}-training.csv"), index=False)
 
-        df_val = pd.DataFrame({
-            "y_true": y_val_labels.reshape(-1),
-            "y_pred": y_val_pred_labels.reshape(-1)
-        })
-        df_val.to_csv(os.path.join(output_folder, f"fold-{fold}-validation.csv"), index=False)
+        # df_val = pd.DataFrame({
+        #     "y_true": y_val_labels.reshape(-1),
+        #     "y_pred": y_val_pred_labels.reshape(-1)
+        # })
+        # df_val.to_csv(os.path.join(output_folder, f"fold-{fold}-validation.csv"), index=False)
 
-        df_test = pd.DataFrame({
-            "y_true": y_test_labels.reshape(-1),
-            "y_pred": y_test_pred_labels.reshape(-1)
-        })
-        df_test.to_csv(os.path.join(output_folder, f"fold-{fold}-test.csv"), index=False)
+        # df_test = pd.DataFrame({
+        #     "y_true": y_test_labels.reshape(-1),
+        #     "y_pred": y_test_pred_labels.reshape(-1)
+        # })
+        # df_test.to_csv(os.path.join(output_folder, f"fold-{fold}-test.csv"), index=False)
 
     return
 
