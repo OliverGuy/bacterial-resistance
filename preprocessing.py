@@ -6,7 +6,8 @@ import os
 from glob import glob
 import numpy as np
 import pandas as pd
-from Bio import SeqIO
+
+classes = {'S': 0, 'R': 1}
 
 # tests that induce resistance on each other
 equivalent_features = {
