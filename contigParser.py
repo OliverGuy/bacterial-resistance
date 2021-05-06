@@ -15,11 +15,11 @@ from Bio.SeqIO.FastaIO import SimpleFastaParser
 from itertools import islice
 
 nucleotides = {'N': 0, 'A': 1, 'C': 2, 'G': 3, 'T': 4}
+length_regex = re.compile(".*_length_(\\d*)_.*")
 
 
 class ContigMaxParser:
     def __init__(self):
-        self.regex = re.compile(".*_length_(\d*)_.*")
         self.max_entries = {}
 
     def __call__(self, *args):
@@ -56,7 +56,7 @@ class ContigMaxParser:
         with open(fullpath) as handle:
             for idx, (name, sequence) in enumerate(SimpleFastaParser(handle)):
                 # try to infer the sequence length from the name
-                m = self.regex.match(name)
+                m = length_regex.match(name)
                 if m:
                     l = int(m.group(1))
                 else:
@@ -64,7 +64,6 @@ class ContigMaxParser:
                 if l > max_len:
                     max_len = l
                     seq_key = idx
-        assert seq_key is not None
         return seq_key
 
 
