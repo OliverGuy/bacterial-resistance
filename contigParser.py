@@ -1,12 +1,14 @@
 """Use parsers to generate usable data from individual contig files.
 
-Parsers notably implement the `parse` method, which returns a list
-of integers representing the contig using the following arguments:
+When called, parsers return a (potentially nested) list of integers 
+representing the contig using the following arguments:
 
 id : hashable
     A unique identifier for the contig, e.g. its run accession.
 fullpath : path-like
     The path to the contig file.
+
+See the `parsers` dict.
 """
 import re
 
