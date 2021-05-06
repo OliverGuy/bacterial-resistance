@@ -15,8 +15,8 @@ from contigParser import parsers
 
 class ContigDataGenerator(tf.keras.utils.Sequence):
 
-    def __init__(self, paths, labels, folder, parser="max", batch_size=32,
-                 sequence_length=None, n_classes=None, shuffle=True, random_state=None):
+    def __init__(self, paths, labels, folder, parser="max", batch_size=32, sequence_length=None,
+                 n_classes=None, shuffle=True, random_state=None, **parser_kwargs):
         """Generates data to fit Keras models on. Use as an array of 
         batches or in the `.fit` method of a `tf.keras` model.
 
@@ -32,8 +32,10 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         folder : path-like
             Path to the contigs folder; individual contig paths are 
             computed by joining `folder` and `paths[i]`.
-        parser: {'max'} or contigParser
-            `contigParser` Parser to use.
+            `contigParser` Parser to use. Non-string objects will be 
+            considered to be already-initialised instances that have an
+            `ndims` attribute and implement `__call__`. See `contigParser`
+            for details.
         batch_size : int, default: 32
             The length of each individual batch.
         sequence_length : int, optional
@@ -45,6 +47,9 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
             Whether to shuffle the dataset before each epoch.
         random_state : int, optional
             The seed to use for shuffling.
+        **parser_kwargs : dict, optional
+            Keyword arguments to be passed to the parser. Used only if the
+            `parser` is a string.
         """
         self.paths = paths
         self.sequence_length = sequence_length
@@ -55,7 +60,11 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         self.shuffle = shuffle
         if shuffle:
             self.rg = np.random.default_rng(random_state)
-        self.parser = parsers[parser]() if type(parser) == str else parser
+        if isinstance(parser, str):
+            self.parser = parsers[parser](**parser_kwargs)
+        else:
+            # the parser is considered a contigParser instance
+            self.parser = parser
         self.on_epoch_end()
 
     def __len__(self):
