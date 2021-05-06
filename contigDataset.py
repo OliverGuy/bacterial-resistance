@@ -69,6 +69,8 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
 
     def __len__(self):
         """Denotes the number of batches per epoch."""
+        # NB: this is shorter than the max number of batches, but ensures
+        # that all batches have the correct size
         return len(self.labels) // self.batch_size
 
     def __getitem__(self, index):
@@ -85,7 +87,6 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
             self.rg.shuffle(self.indexes)
 
     def __data_generation(self, temp_IDs):
-        # X : (n_samples, dim)
         """Generates data containing batch_size samples."""
         # Initialization
         sequences = []
