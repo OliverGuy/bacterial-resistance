@@ -23,6 +23,7 @@ length_regex = re.compile(".*_length_(\\d*)_.*")
 class ContigMaxParser:
     def __init__(self):
         self.max_entries = {}
+        self.ndims = 1
 
     def __call__(self, *args):
         return self.parse(*args)
@@ -40,7 +41,7 @@ class ContigMaxParser:
         Returns
         -------
         list of ints
-            A list of ints representing the maximum-length sequence in the 
+            A list of ints representing the maximum-length sequence in the
             contig file.
         """
         if id not in self.max_entries:
@@ -69,4 +70,88 @@ class ContigMaxParser:
         return seq_key
 
 
-parsers = {"max": ContigMaxParser}
+class ContigFullParser:
+    """Returns the whole contig as a list of lists"""
+
+    def __init__(self):
+        self.ndims = 2
+
+    def __call__(self, *args):
+        return self.parse(*args)
+
+    def parse(self, id, fullpath):
+        """Parses a contig into a list of lists.
+
+        Parameters
+        ----------
+        id : hashable
+            A unique identifier for the contig, e.g. its run accession.
+        fullpath : path-like
+            The path to the contig file.
+
+        Returns
+        -------
+        list of list of ints
+            All of the sequences in the contigs.
+        """
+        with open(fullpath) as handle:
+            res = [[nucleotides[nucl] for nucl in sequence]
+                   for _, sequence in SimpleFastaParser(handle)]
+        return res
+
+
+class contigCutParser:
+    """
+    Returns the contig with long sequences split into several nodes
+
+    Parameters
+    ----------
+    max_length : int, default: 1000
+        The max length of the split sequences
+    max_nodes : int, default: 300
+        The max number of nodes in the sequence; all additional nodes 
+        will be cropped out, starting with the shortest sequences.
+    """
+
+    def __init__(self, max_length=1000, max_nodes=300):
+        self.ndims = 2
+        self.max_length = max_length
+        self.max_nodes = max_nodes
+
+    def __call__(self, *args):
+        return self.parse(*args)
+
+    def parse(self, id, fullpath):
+        """Parses a contig into a list of lists.
+
+        Parameters
+        ----------
+        id : hashable
+            A unique identifier for the contig, e.g. its run accession.
+        fullpath : path-like
+            The path to the contig file.
+
+        Returns
+        -------
+        list of list of ints
+            All of the sequences in the contigs.
+        """
+        with open(fullpath) as handle:
+            res = []
+            for _, sequence in SimpleFastaParser(handle):
+                for i, nucl in enumerate(sequence):
+                    if i % self.max_length == 0:  # the current node is too long
+                        res.append([])
+                    res[-1].append(nucleotides[nucl])
+
+        if len(res) > self.max_nodes:  # too many nodes
+            res.sort(key=len, reverse=True)
+            return res[:self.max_nodes]
+        return res
+
+
+parsers = {
+    "max": ContigMaxParser,
+    "full": ContigFullParser,
+    "cut": contigCutParser
+}
