@@ -17,7 +17,7 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
 
     def __init__(self, paths, labels, folder, parser="max", batch_size=32, sequence_length=None,
                  n_classes=None, shuffle=True, random_state=None, **parser_kwargs):
-        """Generates data to fit Keras models on. Use as an array of 
+        """Generates data to fit Keras models on. Use as an array of
         batches or in the `.fit` method of a `tf.keras` model.
 
         Batches will have shape `batch_size * sequence_length`, while true labels will
@@ -30,7 +30,7 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         labels : array of ints
             Classes corresponding to the contigs.
         folder : path-like
-            Path to the contigs folder; individual contig paths are 
+            Path to the contigs folder; individual contig paths are
             computed by joining `folder` and `paths[i]`.
         parser: {'max', 'full', 'cut'} or contigParser
             `contigParser` Parser to use. Non-string objects will be 
@@ -42,7 +42,7 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         sequence_length : int, optional
             The max length of the parsed contigs.
         n_classes : int, optional
-            The number of classes; default (None) is inferred as 
+            The number of classes; default (None) is inferred as
             `max(labels) + 1` by `keras.utils.to_categorical`.
         shuffle : bool, default: True
             Whether to shuffle the dataset before each epoch.
@@ -100,8 +100,8 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
 
         # 'post' padding allows models to use fast CuDNN layer implementations
         if self.parser.ndims == 1:
-        X = tf.keras.preprocessing.sequence.pad_sequences(
-            sequences, maxlen=self.sequence_length, padding='post', truncating='post')
+            X = tf.keras.preprocessing.sequence.pad_sequences(
+                sequences, maxlen=self.sequence_length, padding='post', truncating='post')
         else:
             X = [tf.keras.preprocessing.sequence.pad_sequences(
                 contig, maxlen=self.sequence_length, padding='post', truncating='post')
@@ -131,24 +131,33 @@ if __name__ == "__main__":
     # integer-encode classes
     y = ast_data[antibiotic].replace(classes).to_numpy()
 
+    batch_size = 16
+
     params = {
         "folder": "../SA-contigs",
         "n_classes": 2,
-        "parser": "max",
-        "batch_size": 32,
-        "shuffle": True
+        "parser": "cut",
+        "batch_size": batch_size,
+        "shuffle": True,
+        "random_state": 42
     }
 
-    print("testing generator...")
+    print("generating sample...")
 
     gen = ContigDataGenerator(X, y, **params)
     t = perf_counter()
     X_batch, y_batch = gen[0]
     t = perf_counter() - t
     print(f"random batch generated in {t} s !")
-    print(f"X_batch shape: {X_batch.shape}, Y_batch shape: {y_batch.shape}")
+    print(f"X_batch len: {len(X_batch)}, Y_batch shape: {y_batch.shape}")
 
-    print("X.head:")
-    print(X_batch[:5])
-    print("y.head:")
-    print(y_batch[:5])
+    print("X[0].head:")
+    print(X_batch[0][:5])
+    print("y[0].head:")
+    print(y_batch[0][:5])
+
+    print(f"testing whole dataset for {antibiotic}...")
+
+    for (X_batch, y_batch) in tqdm(gen):
+        assert len(X_batch) == batch_size
+        assert y_batch.shape[0] == batch_size
