@@ -91,7 +91,7 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         sequences = []
 
         # Generate data
-        for i, id in enumerate(temp_IDs):
+        for id in temp_IDs:
             fullpath = os.path.join(self.folder, self.paths[id])
             sequences.append(self.parser(id, fullpath))
 
