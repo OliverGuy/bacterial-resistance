@@ -32,6 +32,7 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         folder : path-like
             Path to the contigs folder; individual contig paths are 
             computed by joining `folder` and `paths[i]`.
+        parser: {'max', 'full', 'cut'} or contigParser
             `contigParser` Parser to use. Non-string objects will be 
             considered to be already-initialised instances that have an
             `ndims` attribute and implement `__call__`. See `contigParser`
@@ -76,7 +77,8 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
     def __getitem__(self, index):
         """Generates one batch of data."""
         # Generate indexes of the batch
-        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+        indexes = self.indexes[index *
+                               self.batch_size:(index + 1) * self.batch_size]
         # Generate data
         return self.__data_generation(indexes)
 
@@ -90,17 +92,22 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         """Generates data containing batch_size samples."""
         # Initialization
         sequences = []
-
+        assert self.parser.ndims in [1, 2]
         # Generate data
         for id in temp_IDs:
             fullpath = os.path.join(self.folder, self.paths[id])
             sequences.append(self.parser(id, fullpath))
 
         # 'post' padding allows models to use fast CuDNN layer implementations
+        if self.parser.ndims == 1:
         X = tf.keras.preprocessing.sequence.pad_sequences(
             sequences, maxlen=self.sequence_length, padding='post', truncating='post')
-        y = tf.keras.utils.to_categorical(self.labels[temp_IDs], num_classes=self.n_classes)
-        # TODO sample_weights ?
+        else:
+            X = [tf.keras.preprocessing.sequence.pad_sequences(
+                contig, maxlen=self.sequence_length, padding='post', truncating='post')
+                for contig in sequences]
+        y = tf.keras.utils.to_categorical(
+            self.labels[temp_IDs], num_classes=self.n_classes)
         return X, y
 
 
