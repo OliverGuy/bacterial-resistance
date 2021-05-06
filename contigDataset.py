@@ -93,15 +93,6 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         # TODO sample_weights ?
         return X, y
 
-    def __sequence_length_from_path(self, idx, path):
-        fullpath = os.path.join(self.folder, path)
-        return len(self.parser(idx, fullpath))
-
-    def compute_sequence_length(self, threads=12):
-        print("Computing contig length...")
-        return max(len(self.__sequence_length_from_path(idx, path))
-                   for idx, path in enumerate(tqdm(self.paths)))
-
 
 if __name__ == "__main__":
     import pandas as pd
