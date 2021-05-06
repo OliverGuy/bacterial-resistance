@@ -20,8 +20,10 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         """Generates data to fit Keras models on. Use as an array of
         batches or in the `.fit` method of a `tf.keras` model.
 
-        Batches will have shape `batch_size * sequence_length`, while true labels will
-        have size `batch_size * n_classes`.
+        Batches will have shape `batch_size * parsed_shape`, with 
+        `parsed_shape` depending on the output of the specified parser.
+
+        True labels will have size `batch_size * n_classes`. 
 
         Parameters
         ----------
@@ -35,8 +37,8 @@ class ContigDataGenerator(tf.keras.utils.Sequence):
         parser: {'max', 'full', 'cut'} or contigParser
             `contigParser` Parser to use. Non-string objects will be 
             considered to be already-initialised instances that have an
-            `ndims` attribute and implement `__call__`. See `contigParser`
-            for details.
+            `ndims` attribute (either 1 or 2) and implement `__call__`.
+            See `contigParser` for details.
         batch_size : int, default: 32
             The length of each individual batch.
         sequence_length : int, optional
