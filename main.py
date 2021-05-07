@@ -25,7 +25,7 @@ def main():
     batch_size = 50
     epochs = 1000  # 500
     n_folds = 10
-    # this is used to stop and restart the testing on a sequence of folds (only works with a fixed random state)
+    parser = "cut"  # cf. contigParser.py
     starting_fold = 0
     random_state = 42  # TODO change to None for pseudo-random number generation initialized with time
     contig_folder = "../SA-contigs"
@@ -63,8 +63,7 @@ def main():
     # dataset generator parameters
     generator_params = {
         "folder": contig_folder,
-        "n_classes": number_of_classes,
-        "parser": "max",
+        "parser": parser,
         "batch_size": batch_size,
         "shuffle": True,
         "random_state": random_state
