@@ -30,10 +30,26 @@ def main():
     random_state = 42  # TODO change to None for pseudo-random number generation initialized with time
     contig_folder = "../SA-contigs"
     output_root = "../out"
+    # tells tensorflow to not reserve all of your GPU for itself:
+    memory_growth = False
     output_folder = os.path.join(
         output_root,
         datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-keras-cnn-output"
     )
+
+    # cf. https://www.tensorflow.org/guide/gpu#limiting_gpu_memory_growth
+    if memory_growth:
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            try:
+                # Currently, memory growth needs to be the same across GPUs
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+            except RuntimeError as e:
+                # Memory growth must be set before GPUs have been initialized
+                print(e)
+
+    log_dir = "../logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     # create folder
     if not os.path.exists(output_folder):
