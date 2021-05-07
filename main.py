@@ -27,7 +27,10 @@ def main():
     n_folds = 10
     parser = "cut"  # cf. contigParser.py
     starting_fold = 0
-    random_state = 42  # TODO change to None for pseudo-random number generation initialized with time
+    # TODO change to None for pseudo-random number generation initialized with time:
+    random_state = 42
+    gen_multiprocessing = False
+    gen_workers = 1
     contig_folder = "../SA-contigs"
     output_root = "../out"
     # tells tensorflow to not reserve all of your GPU for itself:
@@ -256,18 +259,16 @@ def main():
             training_generator,
             validation_data=validation_generator,
             epochs=epochs,
-            verbose=1,
-            workers=1,  # TODO edit for multiprocessing
-            use_multiprocessing=False
+            workers=gen_workers,
+            use_multiprocessing=gen_multiprocessing
         )  # , callbacks=[early_stopping_callback])
         # see generator_params
 
         test_history = network.evaluate(
             testing_generator,
             epochs=epochs,
-            verbose=1,
-            workers=1,  # TODO edit for multiprocessing
-            use_multiprocessing=False
+            workers=gen_workers,
+            use_multiprocessing=gen_multiprocessing
         )
 
         print("Training process finished. Testing...")
