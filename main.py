@@ -51,8 +51,6 @@ def main():
                 # Memory growth must be set before GPUs have been initialized
                 print(e)
 
-    log_dir = "../logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-
     # create folder
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
