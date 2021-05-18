@@ -10,9 +10,7 @@ import tensorflow as tf
 from model import CNNModel
 
 from preprocessing import classes
-from contigParser import nucleotides
-
-from contigDataset import ContigDataGenerator
+from dataset import nucleotides, load_dataset
 
 
 def main():
@@ -26,10 +24,10 @@ def main():
     # this is used to stop and restart the testing on a sequence of folds
     # (only works with a fixed random state)
     starting_fold = 0
-    # TODO change to None for pseudo-random number generation initialized with time:
+    # change to None for pseudo-random number generation initialized with time:
     random_state = 42
-    gen_multiprocessing = False
-    gen_workers = 1
+    # number of parallel workers for data preprocessing
+    dataset_parallel_transformations = tf.data.AUTOTUNE
     contig_folder = "../SA-contigs"
     output_root = "../out"
     # tells tensorflow to not reserve all of your GPU for itself:
@@ -68,7 +66,7 @@ def main():
     ast_data = ast_data.loc[:, ["contig_path", antibiotic]]
     ast_data.dropna(axis="index", inplace=True)
 
-    X = ast_data["contig_path"].to_numpy()
+    X = os.path.join(contig_folder, '') + ast_data["contig_path"].to_numpy()
 
     # integer-encode classes
     y = ast_data[antibiotic].replace(classes).to_numpy()
@@ -88,6 +86,14 @@ def main():
         "random_state": random_state
     }
 
+    dataset_params = {
+        "n_classes": n_classes,
+        "batch_size": batch_size,
+        "shuffle": True,
+        "random_state": random_state,
+        "n_parallel_calls": dataset_parallel_transformations
+    }
+
     # create the network
     print("Creating network...")
 
@@ -105,9 +111,9 @@ def main():
     print("Building network...")
     # calling model to build it
 
-    network.predict(ContigDataGenerator(X[:batch_size],
-                                        y[:batch_size],
-                                        **generator_params))
+    network.predict(
+        load_dataset(X[:batch_size], y[:batch_size], **dataset_params).take(1)
+    )
 
     # freeze the layer to keep embeddings constant:
     # network.get_layer("embedding").trainable = False
@@ -159,30 +165,23 @@ def main():
 
         print(fold_report + ": starting the training process...")
 
-        training_generator = ContigDataGenerator(
-            X_train, y_train, **generator_params)
-        validation_generator = ContigDataGenerator(
-            X_val, y_val, **generator_params)
-        testing_generator = ContigDataGenerator(
-            X_test, y_test, **generator_params)
+        training_dataset = load_dataset(X_train, y_train, **dataset_params)
+        validation_dataset = load_dataset(X_val, y_val, **dataset_params)
+        testing_dataset = load_dataset(X_test, y_test, **dataset_params)
         # reset network to initial state
         network.load_weights(os.path.join(
             output_folder, "initial-random-weights.h5"))
 
         train_history = network.fit(
-            training_generator,
-            validation_data=validation_generator,
-            epochs=epochs,
-            workers=gen_workers,
-            use_multiprocessing=gen_multiprocessing
+            training_dataset,
+            validation_data=validation_dataset,
+            epochs=epochs
         )  # , callbacks=[early_stopping_callback])
         # see generator_params
 
         test_history = network.evaluate(
-            testing_generator,
-            epochs=epochs,
-            workers=gen_workers,
-            use_multiprocessing=gen_multiprocessing
+            testing_dataset,
+            epochs=epochs
         )
 
         print("Training process finished. Testing...")
@@ -241,4 +240,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with tf.device("/CPU:0"):
+        main()

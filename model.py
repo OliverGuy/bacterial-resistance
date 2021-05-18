@@ -4,10 +4,13 @@ Defines the models and layers used in the NN.
 Includes most layer parameters as well.
 """
 
+import sys
+
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Conv1D, Dropout, GlobalMaxPooling1D, Embedding
+from tensorflow.keras.layers import Dense, Conv1D, Dropout, GlobalMaxPooling1D, Embedding, TimeDistributed
 from tensorflow.keras.layers.experimental.preprocessing import Resizing
+from tensorflow.python.ops.gen_array_ops import shape
 
 # default values for the network
 
@@ -67,9 +70,52 @@ class Resizing1D(tf.keras.layers.Layer):
         ])
         return self.resizer(sequence[:, :, :length, :])
 
+    @tf.function
+    def __resize_node(self, input):
+        # input shape : node_length * embed_dim
+        x = tf.expand_dims(input, axis=0)
+        x = tf.expand_dims(x, axis=0)
+        tf.debugging.assert_shapes([
+            (x, (1, 1, "W", "C"))
+        ])
+        x = self.resizer(x)
+        return tf.squeeze(x, axis=[0, 1])
+
+    # HACK
+    def __resize_ragged_full(self, inputs):
+        # input shape : num_nodes * node_length * embed_dim
+        ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+        idx = 0
+        for node in tf.unstack(inputs.nrows()):
+            ta.write(idx, self.__resize_node(node))
+            idx += 1
+        return ta.stack()
+
     def call(self, inputs, mask=None):
         # input shape : num_nodes * node_length * embed_dim
-        # add a dummy height dimension to all sequences:
+        if isinstance(inputs, tf.RaggedTensor):
+            # with tf.device("/CPU:0"):
+            #     tf.print(inputs, output_stream="file://../tmp/tensors.txt")
+            # ignore any mask and just use the ragged tensors:
+            # res = tf.while_loop(
+            #     lambda _: tf.constant(True),
+            #     self.__resize_node,
+            #     inputs,
+            #     shape_invariants=tf.TensorShape([None, None]),
+            #     maximum_iterations=inputs.nrows(),
+            #     swap_memory=False  # set to True if OOM
+            # )
+            res = tf.map_fn(
+                self.__resize_node,
+                inputs,
+                fn_output_signature=tf.TensorSpec(
+                    shape=[self.resizer.target_width, None],
+                    dtype=tf.float32
+                ),
+                name="resizing_map_fn"
+            )
+            return res
+            # add a dummy height dimension to all sequences:
         x = tf.expand_dims(inputs, axis=1)
         if mask is not None:
             lengths = masked_lengths(mask)
@@ -158,60 +204,77 @@ class CNNModel(tf.keras.Model):
         # dropout won't be built on predict:
         self.dropout.build((None, dense_units_1))
 
+    @tf.function
+    def __transform_contig(self, contig, training):
+        # input shape: num_nodes * node_length
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", "node_length"))
+        # ])
+        # embed each integer-represented nucleotide:
+        x = self.embed_layer(contig)
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", "node_length", self.embed_layer.output_dim))
+        # ])
+        # resize nodes:
+        x = self.resizer(x)
+        tf.debugging.assert_shapes([
+            (x, ("num_nodes", sequence_target_length,
+             self.embed_layer.output_dim))
+        ])
+        # convolve over node lengths:
+        x = self.conv1(x)
+        tf.debugging.assert_shapes([
+            (x, ("num_nodes", "node_length_resized", self.conv1.filters))
+        ])
+        # take the max along each node:
+        x = self.globalmaxpool(x)
+        tf.debugging.assert_shapes([
+            (x, ("num_nodes", self.conv1.filters))
+        ])
+        x = self.dense1(x)
+        tf.debugging.assert_shapes([
+            (x, ("num_nodes", self.dense1.units))
+        ])
+        x = self.dropout(x, training=training)
+        x = self.classifier(x)
+        tf.debugging.assert_shapes([
+            (x, ("num_nodes", self.n_classes))
+        ])
+        # now vote by averaging the predictions from each node:
+        # (NB: need to reshape since we took out the batch dimension)
+        x = self.globalmaxpool(tf.expand_dims(x, axis=0))
+        # 1 * 2
+        tf.debugging.assert_shapes([
+            (x, (1, self.n_classes))
+        ])
+        # squeezing to scrap the dummy batch dimension:
+        return tf.squeeze(x)
+
+    @ tf.autograph.experimental.do_not_convert
+    def __transform_contig_train(self, contig):
+        return self.__transform_contig(contig, tf.constant(True, dtype=tf.bool))
+
+    @ tf.autograph.experimental.do_not_convert
+    def __transform_contig_eval(self, contig):
+        return self.__transform_contig(contig, tf.constant(False, dtype=tf.bool))
+
+    @ tf.autograph.experimental.do_not_convert
     def call(self, inputs, training=None):
         """Returns y_pred as a `inputs.shape[0] * n_classes` tensor.
 
         Input shape is assumed to be `batch_size * num_nodes *
-        node_length`, ie the output of a `contigParser` with `ndims=2`. 
+        node_length`, ie the output of a `contigParser` with `ndims=2`.
 
         Called by `__call__`, `predict`, `fit` and so on.
         """
         # input shape: batch_size * num_nodes * node_length
-        # the tensorflow equivalent of a list, allows backpropagation:
-        results = tf.TensorArray(tf.float32, size=0, dynamic_size=True)
         # apply the model on each contig independently:
-        for idx, contig in enumerate(inputs):
-            tf.debugging.assert_shapes([
-                (contig, ("num_nodes", "node_length"))
-            ])
-            # embed each integer-represented nucleotide:
-            x = self.embed_layer(contig)
-            tf.debugging.assert_shapes([
-                (x, ("num_nodes", "node_length", self.embed_layer.output_dim))
-            ])
-            # resize nodes:
-            x = self.resizer(x)
-            tf.debugging.assert_shapes([
-                (x, ("num_nodes", self.resizer.resizer.target_width,
-                 self.embed_layer.output_dim))
-            ])
-            # convolve over node lengths:
-            x = self.conv1(x)
-            tf.debugging.assert_shapes([
-                (x, ("num_nodes", "node_length_resized", self.conv1.filters))
-            ])
-            # take the max along each node:
-            x = self.globalmaxpool(x)
-            tf.debugging.assert_shapes([
-                (x, ("num_nodes", self.conv1.filters))
-            ])
-            x = self.dense1(x)
-            tf.debugging.assert_shapes([
-                (x, ("num_nodes", self.dense1.units))
-            ])
-            if training:
-                x = self.dropout(x)
-            x = self.classifier(x)
-            tf.debugging.assert_shapes([
-                (x, ("num_nodes", self.n_classes))
-            ])
-            # now vote by averaging the predictions from each node:
-            # (NB: need to reshape since we took out the batch dimension)
-            x = self.globalmaxpool(tf.expand_dims(x, axis=0))
-            # 1 * 2
-            tf.debugging.assert_shapes([
-                (x, (1, self.n_classes))
-            ])
-            # squeezing to scrap the dummy batch dimension:
-            results = results.write(idx, tf.squeeze(x))
-        return results.stack()
+        if training:
+            fn = self.__transform_contig_train
+        else:
+            fn = self.__transform_contig_eval
+        return tf.map_fn(
+            fn,
+            inputs,
+            fn_output_signature=tf.TensorSpec(shape=[2], dtype=tf.float32)
+        )
