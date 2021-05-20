@@ -76,16 +76,7 @@ def main():
     print(f"Number of samples: {ast_data.shape[0]}, {voc_size} nucleotides")
     print(f"{n_classes} unique classes: {np.unique(y)}")
 
-    # dataset generator parameters
-    generator_params = {
-        "folder": contig_folder,
-        "n_classes": n_classes,
-        "parser": parser,
-        "batch_size": batch_size,
-        "shuffle": True,
-        "random_state": random_state
-    }
-
+    # dataset parameters
     dataset_params = {
         "n_classes": n_classes,
         "batch_size": batch_size,
