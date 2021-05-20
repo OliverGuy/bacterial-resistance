@@ -81,31 +81,10 @@ class Resizing1D(tf.keras.layers.Layer):
         x = self.resizer(x)
         return tf.squeeze(x, axis=[0, 1])
 
-    # HACK
-    def __resize_ragged_full(self, inputs):
-        # input shape : num_nodes * node_length * embed_dim
-        ta = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-        idx = 0
-        for node in tf.unstack(inputs.nrows()):
-            ta.write(idx, self.__resize_node(node))
-            idx += 1
-        return ta.stack()
-
     def call(self, inputs, mask=None):
         # input shape : num_nodes * node_length * embed_dim
         if isinstance(inputs, tf.RaggedTensor):
-            # with tf.device("/CPU:0"):
-            #     tf.print(inputs, output_stream="file://../tmp/tensors.txt")
-            # ignore any mask and just use the ragged tensors:
-            # res = tf.while_loop(
-            #     lambda _: tf.constant(True),
-            #     self.__resize_node,
-            #     inputs,
-            #     shape_invariants=tf.TensorShape([None, None]),
-            #     maximum_iterations=inputs.nrows(),
-            #     swap_memory=False  # set to True if OOM
-            # )
-            res = tf.map_fn(
+            return tf.map_fn(
                 self.__resize_node,
                 inputs,
                 fn_output_signature=tf.TensorSpec(
@@ -114,7 +93,6 @@ class Resizing1D(tf.keras.layers.Layer):
                 ),
                 name="resizing_map_fn"
             )
-            return res
             # add a dummy height dimension to all sequences:
         x = tf.expand_dims(inputs, axis=1)
         if mask is not None:
@@ -129,7 +107,6 @@ class Resizing1D(tf.keras.layers.Layer):
             )
             # remove dummy dimensions:
             return tf.squeeze(x, axis=[1, 2])
-            # return self.__resize_with_lengths(x, lengths)
         else:
             return tf.squeeze(self.resizer(x), axis=[1])
             # (remove dummy height dimension)
