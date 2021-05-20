@@ -81,6 +81,7 @@ class Resizing1D(tf.keras.layers.Layer):
         x = self.resizer(x)
         return tf.squeeze(x, axis=[0, 1])
 
+    @tf.autograph.experimental.do_not_convert
     def call(self, inputs, mask=None):
         # input shape : num_nodes * node_length * embed_dim
         if isinstance(inputs, tf.RaggedTensor):
