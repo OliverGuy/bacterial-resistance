@@ -123,9 +123,10 @@ class Resizing1D(tf.keras.layers.Layer):
 
 class CNNModel(tf.keras.Model):
 
-    def __init__(self, voc_size=5, n_classes=2):
-        super(CNNModel, self).__init__()
+    def __init__(self, voc_size=5, n_classes=2, name=None):
+        super(CNNModel, self).__init__(name=name)
         self.n_classes = n_classes
+        self.voc_size = voc_size
         # embeds integral indices into dense arrays
         # TODO also try with a one-hot encoding
         self.embed_layer = Embedding(
@@ -255,3 +256,6 @@ class CNNModel(tf.keras.Model):
             inputs,
             fn_output_signature=tf.TensorSpec(shape=[2], dtype=tf.float32)
         )
+
+    def get_config(self):
+        return {"n_classes": self.n_classes, "voc_size": self.voc_size, "name": self.name}
