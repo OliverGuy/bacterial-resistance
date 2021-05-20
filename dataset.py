@@ -34,33 +34,6 @@ def parse_fasta(filename, label):
     contig = tf.cast(contig, tf.int8)
     return contig, label
 
-# HACK
-
-
-def vectorized_parse(filenames, labels):
-    contigs = tf.map_fn(
-        tf.io.read_file,
-        filenames
-    )
-    # delete the node names:
-    contigs = tf.strings.regex_replace(contigs, r">.*\n", ">")
-    # remove whitespaces i.e. [\t\n\f\r ]
-    contigs = tf.strings.regex_replace(contigs, r"\s", "")
-    # separate the contig into sequences
-    # (the first line would have been empty)
-    contigs = tf.strings.split(contigs, ">")[1:]
-    # separate the sequences into individual nucleotides:
-    contigs = tf.strings.bytes_split(contigs)
-    # embed the nucleotides into integers:
-    contigs = table.lookup(contigs)
-    # cast the tensor to int8 to save memory:
-    contigs = tf.cast(contigs, tf.int8)
-    results = tf.TensorArray(
-        tf.int8, size=0, dynamic_size=True, clear_after_read=True)
-    for idx, contig in enumerate(contigs):
-        results.write(idx, contig.to_tensor())
-    return results, labels
-
 
 def load_dataset(paths, labels, n_classes, batch_size=32, shuffle=True,
                  random_state=None, n_parallel_calls=None, n_prefetch=2):
