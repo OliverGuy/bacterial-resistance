@@ -3,14 +3,14 @@
 Defines the models and layers used in the NN.
 Includes most layer parameters as well.
 """
-
-import sys
+import copy
+from os import replace
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Conv1D, Dropout, GlobalMaxPooling1D, Embedding, TimeDistributed
+from tensorflow.keras.layers import Dense, Conv1D, Dropout, GlobalMaxPooling1D, Embedding
 from tensorflow.keras.layers.experimental.preprocessing import Resizing
-from tensorflow.python.ops.gen_array_ops import shape
+
 
 # default values for the network
 
@@ -82,7 +82,7 @@ class Resizing1D(tf.keras.layers.Layer):
         return tf.squeeze(x, axis=[0, 1])
 
     @tf.autograph.experimental.do_not_convert
-    def call(self, inputs, mask=None):
+    def call(self, inputs, mask=None, training=None):
         # input shape : num_nodes * node_length * embed_dim
         if isinstance(inputs, tf.RaggedTensor):
             return tf.map_fn(
@@ -124,8 +124,8 @@ class Resizing1D(tf.keras.layers.Layer):
 
 class CNNModel(tf.keras.Model):
 
-    def __init__(self, voc_size=5, n_classes=2, name=None):
-        super(CNNModel, self).__init__(name=name)
+    def __init__(self, voc_size=5, n_classes=2, name="cnnmodel", **kwargs):
+        super(CNNModel, self).__init__(name=name, **kwargs)
         self.n_classes = n_classes
         self.voc_size = voc_size
         # embeds integral indices into dense arrays
@@ -138,12 +138,14 @@ class CNNModel(tf.keras.Model):
                 tf.convert_to_tensor(
                     np.array(embed_init_w).reshape(shape),
                     dtype=dtype
-                )
+                ),
+            name="embed_layer"
         )
 
         self.resizer = Resizing1D(
             length=sequence_target_length,
-            interpolation="bilinear"
+            interpolation="bilinear",
+            name="resizer"
         )
 
         self.conv1 = Conv1D(
@@ -157,9 +159,10 @@ class CNNModel(tf.keras.Model):
             bias_initializer=tf.keras.initializers.Constant(
                 bias_vector_init_value),
             kernel_regularizer=tf.keras.regularizers.l2(
-                penalty_regularization_w_conv)
+                penalty_regularization_w_conv),
+            name="conv1"
         )
-        self.globalmaxpool = GlobalMaxPooling1D()
+        self.globalmaxpool = GlobalMaxPooling1D(name="globalmaxpool")
 
         # Rectifier Layer, with dropout
         self.dense1 = Dense(
@@ -167,9 +170,10 @@ class CNNModel(tf.keras.Model):
             activation='relu',
             use_bias=True,
             bias_initializer=tf.keras.initializers.Constant(
-                bias_vector_init_value)
+                bias_vector_init_value),
+            name="dense1"
         )
-        self.dropout = Dropout(dropout_probability)
+        self.dropout = Dropout(dropout_probability, name="dropout")
 
         # Classification head with softmax
         self.classifier = Dense(
@@ -177,11 +181,9 @@ class CNNModel(tf.keras.Model):
             activation='softmax',
             use_bias=True,
             bias_initializer=tf.keras.initializers.Constant(
-                bias_vector_init_value)
+                bias_vector_init_value),
+            name="classifier"
         )
-
-        # dropout won't be built on predict:
-        self.dropout.build((None, dense_units_1))
 
     @tf.function
     def __transform_contig(self, contig, training):
@@ -241,11 +243,14 @@ class CNNModel(tf.keras.Model):
     def call(self, inputs, training=None):
         """Returns y_pred as a `inputs.shape[0] * n_classes` tensor.
 
-        Input shape is assumed to be `batch_size * num_nodes *
-        node_length`, ie the output of a `contigParser` with `ndims=2`.
+        Input shape is assumed to be a RaggedTensor of shape
+        `batch_size * num_nodes * node_length`.
 
         Called by `__call__`, `predict`, `fit` and so on.
         """
+        # build the dropout layer if need be:
+        if not self.dropout.built:
+            self.dropout.build((None, self.dense1.units))
         # input shape: batch_size * num_nodes * node_length
         # apply the model on each contig independently:
         if training:
@@ -259,4 +264,33 @@ class CNNModel(tf.keras.Model):
         )
 
     def get_config(self):
-        return {"n_classes": self.n_classes, "voc_size": self.voc_size, "name": self.name}
+        # HACK
+        print("-------GET CONFIG-------")
+        config = super(CNNModel, self).get_config()
+        config.update({
+            "name": self.name,
+            "n_classes": self.n_classes,
+            "voc_size": self.voc_size,
+            "layers": [copy.deepcopy(layer.get_config()) for layer in self.layers]
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config, custom_objects=None):
+        # HACK
+        print("-------FROM CONFIG-------")
+        model = cls(
+            name=config["name"],
+            voc_size=config["voc_size"],
+            n_classes=config["n_classes"]
+        )
+        layer_configs = {
+            layer_config["name"]: layer_config for layer_config in config['layers']
+        }
+        for idx, layer in enumerate(model.layers):
+            replacement_layer = tf.keras.layers.deserialize(
+                layer_configs[layer.name],
+                custom_objects=custom_objects
+            )
+            model.layers[idx] = replacement_layer
+        return model

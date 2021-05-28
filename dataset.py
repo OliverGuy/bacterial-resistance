@@ -1,6 +1,7 @@
 # TODO move to preprocessing
 
 import os
+import sys
 
 import numpy as np
 import tensorflow as tf
@@ -18,6 +19,8 @@ table = tf.lookup.StaticVocabularyTable(
 
 
 def parse_fasta(filename, label):
+    # HACK
+    tf.print(filename, output_stream="file://../tmp/file_list.txt")
     contig = tf.io.read_file(filename)
     # delete the node names:
     contig = tf.strings.regex_replace(contig, r">.*\n", ">")
@@ -46,10 +49,15 @@ def load_dataset(paths, labels, n_classes, batch_size=32, shuffle=True,
     # shuffle before parsing, as you would otherwise have to wait (around
     # 15 minutes) for the whole dataset to be parsed:
     if shuffle:
-        dataset = dataset.shuffle(dataset.cardinality(), seed=random_state)
+        dataset = dataset.shuffle(
+            dataset.cardinality(),
+            seed=random_state,
+            reshuffle_each_iteration=True
+        )
     dataset = dataset.map(parse_fasta, num_parallel_calls=n_parallel_calls)
     dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(n_prefetch)
+    # HACK
+    # dataset = dataset.prefetch(n_prefetch)
     return dataset
 
 
@@ -93,6 +101,8 @@ def __load_all():
 if __name__ == "__main__":
     from time import perf_counter
     dataset = __load_all()
+
+    print(dataset.cardinality())
 
     print(dataset.element_spec)
 

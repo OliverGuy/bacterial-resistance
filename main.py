@@ -1,16 +1,18 @@
 
 import datetime
 import os
+
 import numpy as np
 import pandas as pd
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # suppress tf info-level logs
 # imports for Keras
 import tensorflow as tf
-from model import CNNModel
 
+from model import CNNModel, Resizing1D
 from preprocessing import classes
 from dataset import nucleotides, load_dataset
+from resuming import resume, CustomModelCheckpoint
 
 
 def main():
@@ -21,10 +23,8 @@ def main():
     epochs = 500
     n_folds = 10
     parser = "cut"  # cf. contigParser.py
-    # this is used to stop and restart the testing on a sequence of folds
-    # (only works with a fixed random state)
-    starting_fold = 0
     # change to None for pseudo-random number generation initialized with time:
+    # (allows to resume training at the latest epoch)
     random_state = 42
     # number of parallel workers for data preprocessing
     dataset_parallel_transformations = tf.data.AUTOTUNE
@@ -34,7 +34,7 @@ def main():
     memory_growth = False
     output_folder = os.path.join(
         output_root,
-        datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + "-keras-cnn-output"
+        f"checkpoints-{random_state}"
     )
 
     # cf. https://www.tensorflow.org/guide/gpu#limiting_gpu_memory_growth
@@ -108,22 +108,55 @@ def main():
 
     # freeze the layer to keep embeddings constant:
     # network.get_layer("embedding").trainable = False
+
+    starting_fold = 0
+    starting_epoch = 0
+    initial_weights_path = os.path.join(
+        output_folder, "initial-random-weights.h5")
+    if (random_state is None) or not os.path.exists(initial_weights_path):
+        print("No initial weights found, or random_state not set; training from scratch.")
+
+        # save the initial random weights of the network, to reset them
+        # later before each fold
+        print(f"Saving new random weights at {initial_weights_path}")
+        network.save_weights(initial_weights_path)
+    else:
+        starting_fold, starting_epoch, checkpoint_path = resume(
+            output_folder, epochs)
+        print(
+            f"Resuming training at fold {starting_fold + 1}, epoch {starting_epoch}")
+        if checkpoint_path is not None:
+            print(f"Restoring from checkpoint: {checkpoint_path}")
+            # HACK
+            with tf.keras.utils.custom_object_scope({
+                "CNNModel": CNNModel,
+                "Resizing1D": Resizing1D
+            }):
+                print(tf.keras.utils.get_custom_objects())
+                network = tf.keras.models.load_model(
+                    checkpoint_path,
+                    # custom_objects={
+                    #     "CNNModel": CNNModel,
+                    #     "Resizing1D": Resizing1D
+                    # }
+                )
+
     network.summary()
+
+    # HACK
+    print("testing")
+    network.predict(
+        load_dataset(X[:batch_size], y[:batch_size], **dataset_params).take(1)
+    )
 
     # a 'callback' in Keras is a condition that is monitored during the training process
     # here we instantiate a callback for an early stop, that is used to avoid overfitting
-    from tensorflow.keras.callbacks import EarlyStopping
-    early_stopping_callback = EarlyStopping(
+    early_stopping_callback = tf.keras.callbacks.EarlyStopping(
         monitor='val_loss',
         min_delta=1e-5,
         patience=100,
         verbose=1,
         restore_best_weights=False)
-
-    # before going into the cross-validation, we actually save the initial
-    # random weights of the network, to reset it later before each fold
-    network.save_weights(os.path.join(
-        output_folder, "initial-random-weights.h5"))
 
     #  cross-validation
     # TODO adapt stratification to multi-label classification
@@ -131,6 +164,9 @@ def main():
     stratified_shuffle_split = StratifiedShuffleSplit(n_splits=n_folds,
                                                       test_size=0.1,
                                                       random_state=random_state)
+
+    # HACK
+    tf.print("starting", output_stream="file://../tmp/file_list.txt")
 
     # this method needs numeric labels fo y, but does not check data from X
     for fold, (train_and_val_index, test_index) in enumerate(stratified_shuffle_split.split(X, y)):
@@ -152,22 +188,51 @@ def main():
         X_train, X_val = X_train_and_val[train_index], X_train_and_val[val_index]
         y_train, y_val = y_train_and_val[train_index], y_train_and_val[val_index]
 
-        fold_report = f"Fold {fold+1}/{n_folds} (samples train={len(X_train)}, validation={len(X_val)}, test={len(X_test)}"
+        fold_report = f"Fold {fold+1}/{n_folds} (samples train={len(X_train)}, validation={len(X_val)}, test={len(X_test)})"
 
         print(fold_report + ": starting the training process...")
 
-        training_dataset = load_dataset(X_train, y_train, **dataset_params)
+        # HACK
+        training_dataset = load_dataset(
+            X_train, y_train, **dataset_params).take(10)
         validation_dataset = load_dataset(X_val, y_val, **dataset_params)
         testing_dataset = load_dataset(X_test, y_test, **dataset_params)
         # reset network to initial state
         network.load_weights(os.path.join(
             output_folder, "initial-random-weights.h5"))
 
+        fold_folder = os.path.join(output_folder, f"fold-{fold}")
+
+        os.makedirs(fold_folder, exist_ok=True)
+
+        checkpoint_callback = CustomModelCheckpoint(
+            os.path.join(fold_folder,
+                         r"epoch-{epoch:03d}-{val_loss:.3f}-{val_categorical_accuracy:.3f}"),
+            monitor="val_loss",
+            verbose=1,
+            save_best_only=False,
+            save_weights_only=False,
+            # True is equivalent to `model.save_weights`,
+            # False is equivalent to `model.save`
+            save_traces=False,
+            # don't try to save function traces (bypass NotImplemented bug on custom layers)
+            mode="auto",
+            save_freq="epoch"
+        )
+
+        # TODO wrong epoch number when resuming ?
+        # TODO check for dataset resuming
+
         train_history = network.fit(
             training_dataset,
             validation_data=validation_dataset,
-            epochs=epochs
-        )  # , callbacks=[early_stopping_callback])
+            epochs=epochs,
+            initial_epoch=starting_epoch,
+            callbacks=[
+                early_stopping_callback,
+                checkpoint_callback
+            ]
+        )
         # see generator_params
 
         test_history = network.evaluate(
@@ -195,10 +260,9 @@ def main():
 
         # save model (divided in two parts: network layout and weights)
         network_json = network.to_json()
-        with open(os.path.join(output_folder, f"fold-{fold}-model.json"), "w") as fp:
+        with open(os.path.join(fold_folder, f"model.json"), "w") as fp:
             fp.write(network_json)
-        network.save_weights(os.path.join(
-            output_folder, f"fold-{fold}-weights.h5"))
+        network.save_weights(os.path.join(fold_folder, f"weights"))
 
         # save information about the fold
         with open(os.path.join(output_folder, "global-summary.txt"), "a") as fp:
@@ -206,7 +270,7 @@ def main():
             fp.write(accuracy_report)
 
         # save data of the fold
-        #x_column_names = ["feature_%d" % f for f in range(0, sequence_length) ]
+        # x_column_names = ["feature_%d" % f for f in range(0, sequence_length) ]
 
         # df_train = pd.DataFrame({
         #     "y_true": y_train_labels.reshape(-1),
