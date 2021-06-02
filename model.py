@@ -4,7 +4,6 @@ Defines the models and layers used in the NN.
 Includes most layer parameters as well.
 """
 import copy
-from os import replace
 
 import numpy as np
 import tensorflow as tf
@@ -264,8 +263,6 @@ class CNNModel(tf.keras.Model):
         )
 
     def get_config(self):
-        # HACK
-        print("-------GET CONFIG-------")
         config = super(CNNModel, self).get_config()
         config.update({
             "name": self.name,
@@ -277,8 +274,6 @@ class CNNModel(tf.keras.Model):
 
     @classmethod
     def from_config(cls, config, custom_objects=None):
-        # HACK
-        print("-------FROM CONFIG-------")
         model = cls(
             name=config["name"],
             voc_size=config["voc_size"],

@@ -12,7 +12,7 @@ import tensorflow as tf
 from model import CNNModel, Resizing1D
 from preprocessing import classes
 from dataset import nucleotides, load_dataset
-from resuming import resume, CustomModelCheckpoint
+# from resuming import resume
 
 
 def main():
@@ -22,10 +22,10 @@ def main():
     batch_size = 16
     epochs = 500
     n_folds = 10
-    parser = "cut"  # cf. contigParser.py
     # change to None for pseudo-random number generation initialized with time:
-    # (allows to resume training at the latest epoch)
     random_state = 42
+    # set only if fold is not None:
+    starting_fold = 0
     # number of parallel workers for data preprocessing
     dataset_parallel_transformations = tf.data.AUTOTUNE
     contig_folder = "../SA-contigs"
@@ -86,68 +86,65 @@ def main():
     }
 
     # create the network
-    print("Creating network...")
+    def create_network():
+        print("Creating network...")
 
-    network = CNNModel(voc_size=voc_size, n_classes=n_classes)
+        network = CNNModel(voc_size=voc_size, n_classes=n_classes)
 
-    # instantiate the optimizer, with its learning rate
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
+        # instantiate the optimizer, with its learning rate
+        optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
 
-    # the loss is categorical crossentropy, as this is a classification problem
-    # TODO use binary crossentropy for multi-label classification and account for unknown classes
-    network.compile(optimizer=optimizer,
-                    loss='categorical_crossentropy',
-                    metrics=['categorical_accuracy'])
+        # the loss is categorical crossentropy, as this is a classification problem
+        # TODO use binary crossentropy for multi-label classification and account for unknown classes
+        network.compile(optimizer=optimizer,
+                        loss='categorical_crossentropy',
+                        metrics=['categorical_accuracy'])
 
-    print("Building network...")
-    # calling model to build it
+        print("Building network...")
+        # calling model to build it
 
-    network.predict(
-        load_dataset(X[:batch_size], y[:batch_size], **dataset_params).take(1)
-    )
+        network.predict(
+            load_dataset(X[:batch_size], y[:batch_size],
+                         **dataset_params).take(1)
+        )
+        return network
+
+    network = create_network()
 
     # freeze the layer to keep embeddings constant:
     # network.get_layer("embedding").trainable = False
 
-    starting_fold = 0
-    starting_epoch = 0
+    # starting_epoch = 0
+
     initial_weights_path = os.path.join(
         output_folder, "initial-random-weights.h5")
     if (random_state is None) or not os.path.exists(initial_weights_path):
-        print("No initial weights found, or random_state not set; training from scratch.")
+        print("No initial weights found, or random_state not set.")
 
         # save the initial random weights of the network, to reset them
         # later before each fold
         print(f"Saving new random weights at {initial_weights_path}")
         network.save_weights(initial_weights_path)
-    else:
-        starting_fold, starting_epoch, checkpoint_path = resume(
-            output_folder, epochs)
-        print(
-            f"Resuming training at fold {starting_fold + 1}, epoch {starting_epoch}")
-        if checkpoint_path is not None:
-            print(f"Restoring from checkpoint: {checkpoint_path}")
-            # HACK
-            with tf.keras.utils.custom_object_scope({
-                "CNNModel": CNNModel,
-                "Resizing1D": Resizing1D
-            }):
-                print(tf.keras.utils.get_custom_objects())
-                network = tf.keras.models.load_model(
-                    checkpoint_path,
-                    # custom_objects={
-                    #     "CNNModel": CNNModel,
-                    #     "Resizing1D": Resizing1D
-                    # }
-                )
+
+    # TODO use this to enable resuming once whole model saving and
+    # loading gets fixed for subclassed models:
+
+    # else:
+    #     starting_fold, starting_epoch, checkpoint_path = resume(
+    #         output_folder, epochs)
+    #     print(
+    #         f"Resuming training at fold {starting_fold + 1}, epoch {starting_epoch}")
+    #     if checkpoint_path is not None:
+    #         print(f"Restoring from checkpoint: {checkpoint_path}")
+    #         with tf.keras.utils.custom_object_scope({
+    #             "CNNModel": CNNModel,
+    #             "Resizing1D": Resizing1D
+    #         }):
+    #             network = tf.keras.models.load_model(
+    #                 checkpoint_path
+    #             )
 
     network.summary()
-
-    # HACK
-    print("testing")
-    network.predict(
-        load_dataset(X[:batch_size], y[:batch_size], **dataset_params).take(1)
-    )
 
     # a 'callback' in Keras is a condition that is monitored during the training process
     # here we instantiate a callback for an early stop, that is used to avoid overfitting
@@ -165,10 +162,7 @@ def main():
                                                       test_size=0.1,
                                                       random_state=random_state)
 
-    # HACK
-    tf.print("starting", output_stream="file://../tmp/file_list.txt")
-
-    # this method needs numeric labels fo y, but does not check data from X
+    # this method needs numeric labels for y, but does not check data from X
     for fold, (train_and_val_index, test_index) in enumerate(stratified_shuffle_split.split(X, y)):
 
         # skip folds until 'starting_fold', used to stop and restart evaluations
@@ -192,12 +186,12 @@ def main():
 
         print(fold_report + ": starting the training process...")
 
-        # HACK
-        training_dataset = load_dataset(
-            X_train, y_train, **dataset_params).take(10)
+        training_dataset = load_dataset(X_train, y_train, **dataset_params)
         validation_dataset = load_dataset(X_val, y_val, **dataset_params)
         testing_dataset = load_dataset(X_test, y_test, **dataset_params)
         # reset network to initial state
+        if fold != 0:
+            network = create_network()  # recreate network to reset optimizer state
         network.load_weights(os.path.join(
             output_folder, "initial-random-weights.h5"))
 
@@ -205,29 +199,24 @@ def main():
 
         os.makedirs(fold_folder, exist_ok=True)
 
-        checkpoint_callback = CustomModelCheckpoint(
+        checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
             os.path.join(fold_folder,
                          r"epoch-{epoch:03d}-{val_loss:.3f}-{val_categorical_accuracy:.3f}"),
             monitor="val_loss",
             verbose=1,
             save_best_only=False,
-            save_weights_only=False,
+            save_weights_only=True,
             # True is equivalent to `model.save_weights`,
             # False is equivalent to `model.save`
-            save_traces=False,
-            # don't try to save function traces (bypass NotImplemented bug on custom layers)
             mode="auto",
             save_freq="epoch"
         )
-
-        # TODO wrong epoch number when resuming ?
-        # TODO check for dataset resuming
 
         train_history = network.fit(
             training_dataset,
             validation_data=validation_dataset,
             epochs=epochs,
-            initial_epoch=starting_epoch,
+            # initial_epoch=starting_epoch,
             callbacks=[
                 early_stopping_callback,
                 checkpoint_callback
