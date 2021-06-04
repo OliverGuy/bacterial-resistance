@@ -225,8 +225,7 @@ def main():
         # see generator_params
 
         test_history = network.evaluate(
-            testing_dataset,
-            epochs=epochs
+            testing_dataset
         )
 
         print("Training process finished. Testing...")
