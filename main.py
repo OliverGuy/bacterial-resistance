@@ -76,6 +76,14 @@ def main():
     print(f"Number of samples: {ast_data.shape[0]}, {voc_size} nucleotides")
     print(f"{n_classes} unique classes: {np.unique(y)}")
 
+    # Compute class weights to alleviate dataset imbalance
+    # scale to keep sum of weights over all samples = y.shape[0]
+    class_weights = [y.shape[0] / (n_classes * (y == i).sum())
+                     for i in range(n_classes)]
+
+    for idx, w in enumerate(class_weights):
+        print(f"Weight for class {idx}: {w}")
+
     # dataset parameters
     dataset_params = {
         "n_classes": n_classes,
@@ -98,7 +106,11 @@ def main():
         # TODO use binary crossentropy for multi-label classification and account for unknown classes
         network.compile(optimizer=optimizer,
                         loss='categorical_crossentropy',
-                        metrics=['categorical_accuracy'])
+                        loss_weights=class_weights,
+                        # TODO can be increased to reduce python overhead
+                        # once backpropagation gets fixed on GPU:
+                        steps_per_execution=1,
+                        weighted_metrics=['categorical_accuracy'])
 
         print("Building network...")
         # calling model to build it
