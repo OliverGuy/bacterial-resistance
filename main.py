@@ -1,9 +1,12 @@
 
 import datetime
 import os
+import json
 
 import numpy as np
 import pandas as pd
+import matplotlib
+from matplotlib import pyplot as plt
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # suppress tf info-level logs
 # imports for Keras
@@ -12,6 +15,7 @@ import tensorflow as tf
 from model import CNNModel, Resizing1D
 from preprocessing import classes
 from dataset import nucleotides, load_dataset
+from plotting import plot_metrics
 # from resuming import resume
 
 
@@ -48,6 +52,9 @@ def main():
             except RuntimeError as e:
                 # Memory growth must be set before GPUs have been initialized
                 print(e)
+
+    # make plots bigger
+    matplotlib.rcParams['figure.figsize'] = (12, 10)
 
     # create folder
     if not os.path.exists(output_folder):
@@ -165,7 +172,8 @@ def main():
         min_delta=1e-5,
         patience=100,
         verbose=1,
-        restore_best_weights=False)
+        restore_best_weights=True  # to evaluate according to the best settings found
+    )
 
     #  cross-validation
     # TODO adapt stratification to multi-label classification
@@ -216,14 +224,16 @@ def main():
                          r"epoch-{epoch:03d}-{val_loss:.3f}-{val_categorical_accuracy:.3f}"),
             monitor="val_loss",
             verbose=1,
-            save_best_only=False,
+            save_best_only=True,
             save_weights_only=True,
             # True is equivalent to `model.save_weights`,
             # False is equivalent to `model.save`
-            mode="auto",
+            mode="min",
             save_freq="epoch"
         )
 
+        # TODO break up epochs to give finer control to early stopping ?
+        # if so, maybe change checkpoint frequency
         train_history = network.fit(
             training_dataset,
             validation_data=validation_dataset,
@@ -236,20 +246,22 @@ def main():
         )
         # see generator_params
 
+        print("Training process finished. Testing...")
         test_history = network.evaluate(
             testing_dataset
         )
 
-        print("Training process finished. Testing...")
-        # TODO to be tested; training doesn't reach that stage in reasonable time yet
+        print("Dumping training history...")
+        with open(os.path.join(fold_folder, "history.json"), 'w') as fp:
+            json.dump(train_history.history, fp)
 
-        print(train_history.history.keys())
+        plot_metrics(network.metrics_names, train_history)
+        plt.savefig(os.path.join(fold_folder, "metrics.png"))
 
-        train_accuracy = train_history.history["categorical_accuracy"]
-        val_accuracy = train_history.history["val_categorical_accuracy"]
-        test_accuracy = test_history.history["categorical_accuracy"]
-
-        # TODO tensorboard ?
+        train_accuracy = train_history.history["categorical_accuracy"][-1]
+        val_accuracy = train_history.history["val_categorical_accuracy"][-1]
+        accuracy_idx = network.metrics_names.index('categorical_accuracy')
+        test_accuracy = test_history[accuracy_idx]
 
         accuracy_report = f"Accuracy on training: {train_accuracy:.4f}, validation: {val_accuracy:.4f}, test: {test_accuracy:.4f}"
 
@@ -268,28 +280,6 @@ def main():
         with open(os.path.join(output_folder, "global-summary.txt"), "a") as fp:
             fp.write(fold_report)
             fp.write(accuracy_report)
-
-        # save data of the fold
-        # x_column_names = ["feature_%d" % f for f in range(0, sequence_length) ]
-
-        # df_train = pd.DataFrame({
-        #     "y_true": y_train_labels.reshape(-1),
-        #     "y_pred": y_train_pred_labels.reshape(-1)
-        # })
-        # #for i, c in enumerate(x_column_names) : df_train[c] = X_train[:,0,i,0].reshape(-1)
-        # df_train.to_csv(os.path.join(output_folder, f"fold-{fold}-training.csv"), index=False)
-
-        # df_val = pd.DataFrame({
-        #     "y_true": y_val_labels.reshape(-1),
-        #     "y_pred": y_val_pred_labels.reshape(-1)
-        # })
-        # df_val.to_csv(os.path.join(output_folder, f"fold-{fold}-validation.csv"), index=False)
-
-        # df_test = pd.DataFrame({
-        #     "y_true": y_test_labels.reshape(-1),
-        #     "y_pred": y_test_pred_labels.reshape(-1)
-        # })
-        # df_test.to_csv(os.path.join(output_folder, f"fold-{fold}-test.csv"), index=False)
 
     return
 
