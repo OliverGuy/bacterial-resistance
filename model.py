@@ -263,14 +263,12 @@ class CNNModel(tf.keras.Model):
         )
 
     def get_config(self):
-        config = super(CNNModel, self).get_config()
-        config.update({
+        return {
             "name": self.name,
             "n_classes": self.n_classes,
             "voc_size": self.voc_size,
             "layers": [copy.deepcopy(layer.get_config()) for layer in self.layers]
-        })
-        return config
+        }
 
     @classmethod
     def from_config(cls, config, custom_objects=None):
