@@ -88,6 +88,9 @@ def main():
     class_weights = [y.shape[0] / (n_classes * (y == i).sum())
                      for i in range(n_classes)]
 
+    #compute the expected bias over the whole dataset, since individual folds whill have the same 
+    bias_init = y.sum()/y.shape[0]
+
     for idx, w in enumerate(class_weights):
         print(f"Weight for class {idx}: {w}")
 
@@ -104,7 +107,7 @@ def main():
     def create_network():
         print("Creating network...")
 
-        network = CNNModel(voc_size=voc_size, n_classes=n_classes)
+        network = CNNModel(voc_size=voc_size, n_classes=n_classes, bias_init=bias_init)
 
         # instantiate the optimizer, with its learning rate
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)

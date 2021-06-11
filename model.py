@@ -32,9 +32,6 @@ conv_window_length_2 = 106
 conv_window_length_3 = 121
 dropout_probability = 0.5
 
-# default value for bias
-bias_vector_init_value = 0.1
-
 # the loss is adjusted with a parameter for l2 regularization in each of
 # the convolutional layers
 penalty_regularization_w_conv = 0.001
@@ -123,7 +120,7 @@ class Resizing1D(tf.keras.layers.Layer):
 
 class CNNModel(tf.keras.Model):
 
-    def __init__(self, voc_size=5, n_classes=2, name="cnnmodel", **kwargs):
+    def __init__(self, voc_size=5, n_classes=2, bias_init=0.5, name="cnnmodel", **kwargs):
         super(CNNModel, self).__init__(name=name, **kwargs)
         self.n_classes = n_classes
         self.voc_size = voc_size
@@ -156,7 +153,7 @@ class CNNModel(tf.keras.Model):
             data_format="channels_last",
             use_bias=True,
             bias_initializer=tf.keras.initializers.Constant(
-                bias_vector_init_value),
+                bias_init),
             kernel_regularizer=tf.keras.regularizers.l2(
                 penalty_regularization_w_conv),
             name="conv1"
@@ -169,7 +166,7 @@ class CNNModel(tf.keras.Model):
             activation='relu',
             use_bias=True,
             bias_initializer=tf.keras.initializers.Constant(
-                bias_vector_init_value),
+                bias_init),
             name="dense1"
         )
         self.dropout = Dropout(dropout_probability, name="dropout")
@@ -180,7 +177,7 @@ class CNNModel(tf.keras.Model):
             activation='softmax',
             use_bias=True,
             bias_initializer=tf.keras.initializers.Constant(
-                bias_vector_init_value),
+                bias_init),
             name="classifier"
         )
 
