@@ -60,10 +60,10 @@ class Resizing1D(tf.keras.layers.Layer):
     def __resize_with_length(self, t):
         sequence, length = t
         # assumes row shape: batch(1) * height(1) * width * channel:
-        tf.debugging.assert_shapes([
-            (sequence, (1, 1, "W", "C")),
-            (length, (1,))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (sequence, (1, 1, "W", "C")),
+        #     (length, (1,))
+        # ])
         return self.resizer(sequence[:, :, :length, :])
 
     @tf.function
@@ -71,9 +71,9 @@ class Resizing1D(tf.keras.layers.Layer):
         # input shape : node_length * embed_dim
         x = tf.expand_dims(input, axis=0)
         x = tf.expand_dims(x, axis=0)
-        tf.debugging.assert_shapes([
-            (x, (1, 1, "W", "C"))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, (1, 1, "W", "C"))
+        # ])
         x = self.resizer(x)
         return tf.squeeze(x, axis=[0, 1])
 
@@ -194,36 +194,36 @@ class CNNModel(tf.keras.Model):
         # ])
         # resize nodes:
         x = self.resizer(x)
-        tf.debugging.assert_shapes([
-            (x, ("num_nodes", sequence_target_length,
-             self.embed_layer.output_dim))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", sequence_target_length,
+        #      self.embed_layer.output_dim))
+        # ])
         # convolve over node lengths:
         x = self.conv1(x)
-        tf.debugging.assert_shapes([
-            (x, ("num_nodes", "node_length_resized", self.conv1.filters))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", "node_length_resized", self.conv1.filters))
+        # ])
         # take the max along each node:
         x = self.globalmaxpool(x)
-        tf.debugging.assert_shapes([
-            (x, ("num_nodes", self.conv1.filters))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", self.conv1.filters))
+        # ])
         x = self.dense1(x)
-        tf.debugging.assert_shapes([
-            (x, ("num_nodes", self.dense1.units))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", self.dense1.units))
+        # ])
         x = self.dropout(x, training=training)
         x = self.classifier(x)
-        tf.debugging.assert_shapes([
-            (x, ("num_nodes", self.n_classes))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, ("num_nodes", self.n_classes))
+        # ])
         # now vote by averaging the predictions from each node:
         # (NB: need to reshape since we took out the batch dimension)
         x = self.globalmaxpool(tf.expand_dims(x, axis=0))
         # 1 * 2
-        tf.debugging.assert_shapes([
-            (x, (1, self.n_classes))
-        ])
+        # tf.debugging.assert_shapes([
+        #     (x, (1, self.n_classes))
+        # ])
         # squeezing to scrap the dummy batch dimension:
         return tf.squeeze(x)
 
