@@ -1,7 +1,9 @@
 # Bacterial Resistance
 
-### File status
+Requires NumPy, Pandas, scikit-learn and Tensorflow 2.
 
-- `preprocessing.py` is stable unless big changes occur in the data; see its `main()`.
-- `contigDataset.py` is untested for now and thus WIP.
-- `contigParser` is untested; more parsers to be added.
+To preprocess AST data into one clean csv file, run `preprocessing.py`.
+
+To run training, use `main.py`.
+
+Training parameters can be edited at the beginning of `main.py`; model hyperparameters and architecture can be modified inside `model.py`.
