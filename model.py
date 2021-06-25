@@ -13,9 +13,14 @@ from tensorflow.keras.layers.experimental.preprocessing import Resizing
 
 # default values for the network
 
-embed_dim = 1
+embed_dim = 4
 # in order NACGT, see nucleotides:
-embed_init_w = [0, 1, 0.25, 0.75, 0.5]
+# embed_init_w = [0, 1, 0.25, 0.75, 0.5]
+embed_init_w = [[1., 0., 0., 0.],
+                [0., 1., 0., 0.],
+                [0., 0., 1., 0.],
+                [0., 0., 0., 1.],
+                [1., 1., 1., 1.]]
 
 sequence_target_length = 100
 interpolation = "bilinear"
@@ -125,7 +130,6 @@ class CNNModel(tf.keras.Model):
         self.n_classes = n_classes
         self.voc_size = voc_size
         # embeds integral indices into dense arrays
-        # TODO also try with a one-hot encoding
         self.embed_layer = Embedding(
             voc_size,
             embed_dim,
