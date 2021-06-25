@@ -1,5 +1,4 @@
 
-import datetime
 import os
 import json
 
@@ -9,7 +8,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # suppress tf info-level logs
-# imports for Keras
+
 import tensorflow as tf
 
 from model import CNNModel, Resizing1D
@@ -88,8 +87,8 @@ def main():
     class_weights = [y.shape[0] / (n_classes * (y == i).sum())
                      for i in range(n_classes)]
 
-    #compute the expected bias over the whole dataset, since individual folds whill have the same 
-    bias_init = y.sum()/y.shape[0]
+    # compute the expected bias over the whole dataset, since individual folds whill have the same
+    bias_init = y.sum() / y.shape[0]
 
     for idx, w in enumerate(class_weights):
         print(f"Weight for class {idx}: {w}")
@@ -107,7 +106,8 @@ def main():
     def create_network():
         print("Creating network...")
 
-        network = CNNModel(voc_size=voc_size, n_classes=n_classes, bias_init=bias_init)
+        network = CNNModel(voc_size=voc_size,
+                           n_classes=n_classes, bias_init=bias_init)
 
         # instantiate the optimizer, with its learning rate
         optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
@@ -235,8 +235,6 @@ def main():
             save_freq="epoch"
         )
 
-        # TODO break up epochs to give finer control to early stopping ?
-        # if so, maybe change checkpoint frequency
         train_history = network.fit(
             training_dataset,
             validation_data=validation_dataset,
