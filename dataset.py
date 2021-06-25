@@ -69,7 +69,7 @@ def __load_all():
     ast_data = pd.read_csv(os.path.join(contig_folder, "ast.csv"),
                            header=0, index_col=0)
 
-    antibiotic = "gentamicin"
+    antibiotic = "erythromycin"
 
     # keep only data relative to the chosen antibiotic
     ast_data = ast_data.loc[:, ["contig_path", antibiotic]]
