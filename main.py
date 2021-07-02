@@ -1,4 +1,9 @@
 
+from plotting import plot_metrics
+from dataset import nucleotides, load_dataset
+from preprocessing import classes
+from model import CNNModel, Resizing1D
+import tensorflow as tf
 import os
 import json
 
@@ -8,13 +13,8 @@ import matplotlib
 from matplotlib import pyplot as plt
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # suppress tf info-level logs
+# imports for Keras
 
-import tensorflow as tf
-
-from model import CNNModel, Resizing1D
-from preprocessing import classes
-from dataset import nucleotides, load_dataset
-from plotting import plot_metrics
 # from resuming import resume
 
 
@@ -23,7 +23,7 @@ def main():
     # a few hard-coded values
     voc_size = len(nucleotides)   # 5:NACGT
     batch_size = 16
-    epochs = 500
+    epochs = 200
     n_folds = 10
     # change to None for pseudo-random number generation initialized with time:
     random_state = 42
@@ -106,11 +106,17 @@ def main():
     def create_network():
         print("Creating network...")
 
-        network = CNNModel(voc_size=voc_size,
-                           n_classes=n_classes, bias_init=bias_init)
+        network = CNNModel(
+            voc_size=voc_size,
+            n_classes=n_classes,
+            bias_init=bias_init
+        )
 
         # instantiate the optimizer, with its learning rate
-        optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
+        optimizer = tf.keras.optimizers.Adam(
+            learning_rate=1e-3,
+            clipnorm=1.
+        )
 
         # the loss is categorical crossentropy, as this is a classification problem
         # TODO use binary crossentropy for multi-label classification and account for unknown classes
@@ -134,7 +140,7 @@ def main():
     network = create_network()
 
     # freeze the layer to keep embeddings constant:
-    # network.get_layer("embedding").trainable = False
+    network.get_layer("embed_layer").trainable = False
 
     # starting_epoch = 0
 
@@ -281,7 +287,8 @@ def main():
         with open(os.path.join(output_folder, "global-summary.txt"), "a") as fp:
             fp.write(fold_report)
             fp.write(accuracy_report)
-
+        # HACK we don't have time to run multiple folds
+        break
     return
 
 
