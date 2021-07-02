@@ -7,7 +7,7 @@ import copy
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Conv1D, Dropout, GlobalMaxPooling1D, Embedding
+from tensorflow.keras.layers import Dense, Conv1D, Dropout, MaxPool1D, GlobalMaxPooling1D, Embedding, GlobalAveragePooling1D, Flatten
 from tensorflow.keras.layers.experimental.preprocessing import Resizing
 
 
@@ -23,18 +23,13 @@ embed_init_w = [[1., 0., 0., 0.],
                 [1., 1., 1., 1.]]
 
 sequence_target_length = 100
-interpolation = "bilinear"
+resize_interpolation = "bilinear"
 
 conv_filters_1 = 12  # 130
-units_2 = 204
-units_3 = 150
-dense_units_1 = 64  # 196
-pool_size_1 = 148
-pool_size_2 = 236
-pool_size_3 = 81
-conv_window_length_1 = 31
-conv_window_length_2 = 106
-conv_window_length_3 = 121
+conv_window_length_1 = 8
+pool_size_1 = 8
+dense_units_1 = 32
+dense_units_2 = 64  # 196
 dropout_probability = 0.5
 
 # the loss is adjusted with a parameter for l2 regularization in each of
@@ -130,6 +125,7 @@ class CNNModel(tf.keras.Model):
         self.n_classes = n_classes
         self.voc_size = voc_size
         # embeds integral indices into dense arrays
+        # TODO also try with a one-hot encoding
         self.embed_layer = Embedding(
             voc_size,
             embed_dim,
@@ -162,16 +158,26 @@ class CNNModel(tf.keras.Model):
                 penalty_regularization_w_conv),
             name="conv1"
         )
+
+        self.maxpool = MaxPool1D(
+            pool_size=pool_size_1,
+        )
+
         self.globalmaxpool = GlobalMaxPooling1D(name="globalmaxpool")
 
-        # Rectifier Layer, with dropout
         self.dense1 = Dense(
             dense_units_1,
             activation='relu',
             use_bias=True,
-            bias_initializer=tf.keras.initializers.Constant(
-                bias_init),
             name="dense1"
+        )
+
+        # Rectifier Layer, with dropout
+        self.dense2 = Dense(
+            dense_units_2,
+            activation='relu',
+            use_bias=True,
+            name="dense2"
         )
         self.dropout = Dropout(dropout_probability, name="dropout")
 
@@ -180,10 +186,14 @@ class CNNModel(tf.keras.Model):
             n_classes,
             activation='softmax',
             use_bias=True,
+            # set the classifier bias to accelerate training:
             bias_initializer=tf.keras.initializers.Constant(
                 bias_init),
             name="classifier"
         )
+
+        self.globalaveragepool = GlobalAveragePooling1D(
+            name="globalaveragepool")
 
     @tf.function
     def __transform_contig(self, contig, training):
@@ -207,12 +217,16 @@ class CNNModel(tf.keras.Model):
         # tf.debugging.assert_shapes([
         #     (x, ("num_nodes", "node_length_resized", self.conv1.filters))
         # ])
+        x = self.maxpool(x)
+
+        x = self.dense1(x)
+
         # take the max along each node:
         x = self.globalmaxpool(x)
         # tf.debugging.assert_shapes([
         #     (x, ("num_nodes", self.conv1.filters))
         # ])
-        x = self.dense1(x)
+        x = self.dense2(x)
         # tf.debugging.assert_shapes([
         #     (x, ("num_nodes", self.dense1.units))
         # ])
@@ -223,7 +237,7 @@ class CNNModel(tf.keras.Model):
         # ])
         # now vote by averaging the predictions from each node:
         # (NB: need to reshape since we took out the batch dimension)
-        x = self.globalmaxpool(tf.expand_dims(x, axis=0))
+        x = self.globalaveragepool(tf.expand_dims(x, axis=0))
         # 1 * 2
         # tf.debugging.assert_shapes([
         #     (x, (1, self.n_classes))
@@ -250,7 +264,7 @@ class CNNModel(tf.keras.Model):
         """
         # build the dropout layer if need be:
         if not self.dropout.built:
-            self.dropout.build((None, self.dense1.units))
+            self.dropout.build((None, self.dense2.units))
         # input shape: batch_size * num_nodes * node_length
         # apply the model on each contig independently:
         if training:
